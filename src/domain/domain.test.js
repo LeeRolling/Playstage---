@@ -147,6 +147,60 @@ test("存档后再说话，读档会回到存档时", () => {
   assert.equal(library.sessions[0].messages.length, count);
 });
 
+test("从头开始清掉这场进度，存档和人设还在；读档会回到那座舞台", () => {
+  let library = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-neon" }).library;
+  library = dispatch(library, { type: "session.send", text: "一句" }).library;
+  library = dispatch(library, { type: "character.update", id: "npc-chutang", fields: { summary: "改过的向导" } }).library;
+  assert.equal(library.characters.find((item) => item.id === "npc-chutang").summary, "改过的向导");
+  const saved = dispatch(library, { type: "save.create", name: "霓穹开场" });
+  assert.match(saved.message, /已存档/);
+  library = saved.library;
+  const begun = dispatch(library, { type: "run.begin" });
+  assert.match(begun.message, /从头准备/);
+  library = begun.library;
+  assert.equal(library.stagePicked, false);
+  assert.equal(library.activeStageId, "");
+  assert.equal(library.sessions[0].npcIds.length, 0);
+  assert.equal(library.sessions[0].worldBookId, "");
+  assert.equal(library.saves.length, 1);
+  assert.equal(library.characters.find((item) => item.id === "npc-chutang").summary, "改过的向导");
+  const loaded = dispatch(library, { type: "save.load", saveId: library.saves[0].id });
+  assert.match(loaded.message, /已读档/);
+  library = loaded.library;
+  assert.equal(library.stagePicked, true);
+  assert.equal(library.activeStageId, "stage-neon");
+  assert.equal(library.sessions[0].worldBookId, "book-neon");
+  assert.deepEqual(library.sessions[0].npcIds, ["npc-chutang", "npc-xingxuan", "npc-xuejing"]);
+
+  const restarted = dispatch(library, { type: "run.start", stageId: "stage-azure" });
+  assert.match(restarted.message, /舞台已选定/);
+  assert.equal(restarted.library.activeStageId, "stage-azure");
+  assert.equal(restarted.library.sessions[0].worldBookId, "book-azure");
+  assert.equal(restarted.library.saves.length, 1);
+  assert.equal(
+    restarted.library.sessions[0].messages.some((item) => item.text.includes("这句不该") || item.text.includes("一句")),
+    false,
+  );
+});
+
+test("保存人设和世界书会明确告诉你写成了", () => {
+  const seeded = createSeedLibrary();
+  const card = dispatch(seeded, {
+    type: "character.update",
+    id: "player-guest",
+    fields: { name: "旅人", summary: "还是旅人" },
+  });
+  assert.match(card.message, /人设已保存/);
+  const book = dispatch(card.library, {
+    type: "world.update",
+    worldBookId: "book-azure",
+    name: "青玄界",
+    summary: "补了一句",
+  });
+  assert.match(book.message, /世界书已保存/);
+  assert.equal(book.library.worldBooks.find((item) => item.id === "book-azure").summary, "补了一句");
+});
+
 test("剧情包占位导出含前文提要，导入只登记", () => {
   const picked = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-azure" }).library;
   const exported = dispatch(picked, { type: "transfer.export", kind: "story" });

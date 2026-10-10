@@ -29,7 +29,7 @@ import {
   setTimeOfDay,
   SPEAK_MODES,
 } from "./session.js";
-import { selectStage } from "./stages.js";
+import { beginNewRun, selectStage } from "./stages.js";
 import { exportBundle, noteImport } from "./transfer.js";
 import { clone } from "./util.js";
 import {
@@ -76,14 +76,18 @@ export function dispatch(library, action) {
   switch (action.type) {
     case "stage.select":
       return plain(selectStage(library, action.stageId), "舞台已选定。这一场只请这三位。");
+    case "run.begin":
+      return plain(beginNewRun(library), "这一场已从头准备。请选择一个世界。");
+    case "run.start":
+      return plain(selectStage(beginNewRun(library), action.stageId), "舞台已选定。这一场只请这三位。");
     case "world.update":
-      return plain(updateWorldBook(library, action));
+      return plain(updateWorldBook(library, action), "这本世界书已保存。");
     case "world.addEntry":
-      return plain(addEntry(library, action));
+      return plain(addEntry(library, action), "条目已加上。");
     case "world.addPatch":
-      return plain(addPatch(library, action));
+      return plain(addPatch(library, action), "补丁已加上。");
     case "world.togglePatch":
-      return plain(togglePatch(library, action.patchId));
+      return plain(togglePatch(library, action.patchId), "补丁已更新。");
     case "world.addLocation":
       return plain(addLocation(library, action), "地点已记下。可以接着给它配白天和夜晚的图。");
     case "world.setLocationImage":
@@ -98,15 +102,15 @@ export function dispatch(library, action) {
       return plain(created.library, "已添一张新人设，可以现在就改。");
     }
     case "character.update":
-      return plain(updateCharacter(library, action.id, action.fields || {}));
+      return plain(updateCharacter(library, action.id, action.fields || {}), "人设已保存。");
     case "character.remove":
       return plain(removeCharacter(library, action.id), "这张人设已拿下。");
     case "session.setMode":
       return plain(setSpeakMode(library, action.mode));
     case "session.setPlayer":
-      return plain(setPlayer(library, action.playerCardId));
+      return plain(setPlayer(library, action.playerCardId), "玩家人设已换上。");
     case "session.setNpcs":
-      return plain(setNpcIds(library, action.npcIds));
+      return plain(setNpcIds(library, action.npcIds), "上台的人已记下。");
     case "session.setLocation":
       return plain(setLocation(library, action.locationId));
     case "session.setTime":

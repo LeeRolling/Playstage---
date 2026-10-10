@@ -1,6 +1,41 @@
 import { bookForSession } from "./scene.js";
 import { clone, nowIso, uid } from "./util.js";
 
+export function beginNewRun(library) {
+  const next = clone(library);
+  const session = next.sessions[0];
+  if (!session) throw new Error("还没有会话。");
+  const playerOk = next.characters.some((item) => item.id === session.playerCardId && item.kind === "player");
+  if (!playerOk) {
+    const fallback = next.characters.find((item) => item.kind === "player");
+    if (fallback) session.playerCardId = fallback.id;
+  }
+  session.name = "还没开场";
+  session.worldBookId = "";
+  session.npcIds = [];
+  session.speakMode = "turn";
+  session.turnCursor = 0;
+  session.messages = [
+    {
+      id: uid("msg"),
+      speakerId: "system",
+      speakerName: "戏台",
+      kind: "system",
+      text: "三个舞台不会挤在一场里。先选霜印王国、青玄界或霓穹市，再请那一岸的三位上台。",
+      at: nowIso(),
+    },
+  ];
+  session.state = {
+    locationId: "",
+    timeOfDay: "day",
+    activeTriggerId: "",
+    alive: { [session.playerCardId]: true },
+  };
+  next.stagePicked = false;
+  next.activeStageId = "";
+  return next;
+}
+
 export function selectStage(library, stageId) {
   const stage = library.stages?.find((item) => item.id === stageId);
   if (!stage) throw new Error("没有这个舞台。请在霜印王国、青玄界、霓穹市里选一个。");

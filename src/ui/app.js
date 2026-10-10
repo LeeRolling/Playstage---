@@ -24,7 +24,10 @@ let guideOpen = false;
 let guideStep = 0;
 let disclaimerChecked = false;
 let forcePicker = false;
+let pickerIntent = "";
 let bookFocus = "";
+let paintedView = null;
+let toastTimer = 0;
 const previews = new Map();
 const sceneCache = new Map();
 
@@ -52,6 +55,10 @@ function render() {
   const sceneUrl = mediaUrl(scene.imageFile);
   const sceneOk = Boolean(sceneUrl) && sceneCache.get(sceneUrl) === "ok" && view === "stage";
   rememberScene(sceneUrl);
+  const keepScroll = paintedView === view;
+  const ledgerScroll = keepScroll ? app.querySelector(".ledger")?.scrollTop || 0 : 0;
+  const sideScroll = keepScroll ? app.querySelector(".side")?.scrollTop || 0 : 0;
+  const windowScroll = keepScroll ? window.scrollY : 0;
   app.innerHTML = `
     <div class="shell">
       <header class="topbar">
@@ -81,14 +88,30 @@ function render() {
       </main>
       <aside class="side">${sideHtml(session)}</aside>
     </div>
+    ${toastHtml()}
     ${guideOpen ? guideModalHtml() : ""}
     ${!guideOpen && (!library.stagePicked || forcePicker) ? stagePickerHtml() : ""}
   `;
   bind();
+  settleSprites();
+  paintedView = view;
+  const ledger = app.querySelector(".ledger");
+  const side = app.querySelector(".side");
+  if (keepScroll && ledger) ledger.scrollTop = ledgerScroll;
+  if (keepScroll && side) side.scrollTop = sideScroll;
+  if (keepScroll) window.scrollTo(0, windowScroll);
+  if (keepScroll) {
+    requestAnimationFrame(() => {
+      if (ledger?.isConnected) ledger.scrollTop = ledgerScroll;
+      if (side?.isConnected) side.scrollTop = sideScroll;
+      window.scrollTo(0, windowScroll);
+    });
+  }
   const lines = app.querySelector(".lines");
   if (lines) lines.scrollTop = lines.scrollHeight;
   const field = app.querySelector("#say");
-  if (field && view === "stage" && !guideOpen && library.stagePicked) field.focus();
+  if (field && view === "stage" && !guideOpen && library.stagePicked && !forcePicker) field.focus({ preventScroll: true });
+  armToast();
 }
 
 function stageHtml(session, scene, sceneUrl) {
@@ -99,7 +122,10 @@ function stageHtml(session, scene, sceneUrl) {
     <div class="plaque"><span>${esc(scene.stageName || "选择舞台")}</span><strong>${esc(scene.locationName)}</strong></div>
     ${ribbonHtml(scene, missingFile)}
     <div class="sprites">
-      ${cast.map((person) => spriteHtml(person)).join("")}
+      ${cast
+        .filter((person) => person.kind !== "player")
+        .map((person) => spriteHtml(person, speaker))
+        .join("")}
     </div>
     <section class="dialog" aria-label="对话框">
       <div class="dialog-portrait">
@@ -111,7 +137,6 @@ function stageHtml(session, scene, sceneUrl) {
         <b>${esc(speaker.name)}</b>
       </div>
       <div class="dialog-main">
-        ${noticeHtml()}
         ${library.model.remindRetest ? `<p class="notice">上次打开时模型曾经测过。这次请到「模型」再测一次连接。</p>` : ""}
         <div class="lines">
           ${session.messages
@@ -149,12 +174,12 @@ function ribbonHtml(scene, missingFile) {
   return "";
 }
 
-function spriteHtml(person) {
+function spriteHtml(person, speaker) {
   const src = pictureUrl(person, "fullBody");
-  const figure = src
-    ? `<div class="figure"><img alt="${esc(person.name)}的立绘" src="${esc(src)}" /></div>`
-    : `<div class="figure" style="--accent:${accent(person.id)}"></div>`;
-  return `<div class="sprite"><b style="color:${accent(person.id)}">${esc(person.name)}</b>${figure}</div>`;
+  const someoneSpeaking = Boolean(speaker?.id) && speaker.id !== "system";
+  const quiet = someoneSpeaking && person.id !== speaker.id;
+  const image = src ? `<img alt="${esc(person.name)}的立绘" src="${esc(src)}" />` : "";
+  return `<div class="sprite ${quiet ? "is-quiet" : "is-speaking"}"><div class="figure" style="--accent:${accent(person.id)}">${image}</div></div>`;
 }
 
 function ledgerHtml() {
@@ -168,7 +193,7 @@ function ledgerHtml() {
     guide: guidePageHtml,
   };
   const draw = pages[view] || worldHtml;
-  return `<section class="ledger">${noticeHtml()}${draw()}</section>`;
+  return `<section class="ledger">${draw()}</section>`;
 }
 
 function worldHtml() {
@@ -587,29 +612,71 @@ function sideHtml(session) {
 }
 
 function stagePickerHtml() {
+  const tip =
+    pickerIntent === "new"
+      ? "我们为您准备了三个世界供您体验。请选择。"
+      : pickerIntent === "continue"
+        ? "继续故事会读这台电脑上已经存下的档，台上回到当时的舞台和进度。"
+        : "从头开始是新的一场。继续故事会打开已经存下的档。";
   return `
     <div class="modal-back">
       <div class="modal stage-modal" role="dialog" aria-modal="true" aria-labelledby="stage-title">
-        <div class="steps">先选一座</div>
-        <h2 id="stage-title">今天从哪座舞台开始</h2>
-        <p>三座世界各有三位。选一座，就只请她们上台。想换，可以以后再换，不会把九个人放进同一场。</p>
-        <div class="stage-grid">
-          ${library.stages
-            .map((stage) => {
-              const book = library.worldBooks.find((item) => item.id === stage.worldBookId);
-              const names = stage.characterIds.map((id) => nameOf(id)).join("、");
-              return `
-                <button type="button" class="stage-card" data-stage="${esc(stage.id)}">
-                  <span>${esc(stage.tone)}</span>
-                  <strong>${esc(stage.name)}</strong>
-                  <p>${esc(book?.summary || "")}</p>
-                  <em>${esc(names)}</em>
-                </button>`;
-            })
-            .join("")}
+        <div class="steps">请选择</div>
+        <h2 id="stage-title">今天想要开始的舞台</h2>
+        <div class="picker-choice" role="group" aria-label="开始方式">
+          <button type="button" id="pick-new" aria-pressed="${pickerIntent === "new" ? "true" : "false"}">从头开始</button>
+          <button type="button" id="pick-continue" aria-pressed="${pickerIntent === "continue" ? "true" : "false"}">继续故事</button>
         </div>
+        <p id="picker-tip">${esc(tip)}</p>
+        ${pickerIntent === "new" ? stageCardsHtml() : ""}
+        ${pickerIntent === "continue" ? continueSavesHtml() : ""}
         ${forcePicker && library.stagePicked ? `<div class="row"><button class="ghost" type="button" id="close-picker">先不换</button></div>` : ""}
       </div>
+    </div>
+  `;
+}
+
+function stageCardsHtml() {
+  return `
+    <div class="stage-grid">
+      ${library.stages
+        .map((stage) => {
+          const book = library.worldBooks.find((item) => item.id === stage.worldBookId);
+          const names = stage.characterIds.map((id) => nameOf(id)).join("、");
+          return `
+            <button type="button" class="stage-card" data-stage="${esc(stage.id)}">
+              <span>${esc(stage.tone)}</span>
+              <strong>${esc(stage.name)}</strong>
+              <p>${esc(book?.summary || "")}</p>
+              <em>${esc(names)}</em>
+            </button>`;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function continueSavesHtml() {
+  if (!library.saves.length) {
+    return `
+      <div class="callout" id="continue-empty">
+        还没有可以继续的故事。这台电脑上还没有存档。请先从头开始；演过之后，在左侧「存档」里留下进度，下次就能从这里接着演。
+      </div>
+      <div class="row"><button class="primary" type="button" id="empty-to-new">改为从头开始</button></div>
+    `;
+  }
+  return `
+    <div class="stack" id="continue-list">
+      ${library.saves
+        .map(
+          (save) => `
+          <div class="block">
+            <b>${esc(save.name)}</b>
+            <p class="help">${esc(save.at)} · ${esc(save.snapshot?.name || "未命名舞台")}</p>
+            <div class="row"><button class="primary" type="button" data-continue="${esc(save.id)}">读这个档</button></div>
+          </div>`,
+        )
+        .join("")}
     </div>
   `;
 }
@@ -637,9 +704,32 @@ function guideModalHtml() {
   `;
 }
 
-function noticeHtml() {
+function toastHtml() {
   if (!notice) return "";
-  return `<p class="notice ${notice.tone === "bad" ? "bad" : ""}">${esc(notice.text)}</p>`;
+  return `<p class="toast ${notice.tone === "bad" ? "bad" : ""}" role="status">${esc(notice.text)}</p>`;
+}
+
+function settleSprites() {
+  app.querySelectorAll(".sprite img").forEach((img) => {
+    const reveal = () => img.parentElement?.classList.add("has-art");
+    const hide = () => img.remove();
+    if (img.complete) {
+      if (img.naturalWidth > 0) reveal();
+      else hide();
+    } else {
+      img.addEventListener("load", reveal);
+      img.addEventListener("error", hide);
+    }
+  });
+}
+
+function armToast() {
+  window.clearTimeout(toastTimer);
+  if (!notice) return;
+  toastTimer = window.setTimeout(() => {
+    notice = null;
+    app.querySelector(".toast")?.remove();
+  }, 4200);
 }
 
 function bind() {
@@ -658,21 +748,52 @@ function bind() {
       render();
     });
   });
+  app.querySelector("#pick-new")?.addEventListener("click", () => {
+    pickerIntent = "new";
+    render();
+  });
+  app.querySelector("#pick-continue")?.addEventListener("click", () => {
+    pickerIntent = "continue";
+    render();
+  });
+  app.querySelector("#empty-to-new")?.addEventListener("click", () => {
+    pickerIntent = "new";
+    render();
+  });
   app.querySelectorAll("[data-stage]").forEach((button) => {
     button.addEventListener("click", async () => {
-      if (library.stagePicked && !confirm("换舞台会把在场的人换成那三位。已经说过的话还留着。")) return;
-      forcePicker = false;
+      if (pickerIntent !== "new") return;
+      const needsReset = Boolean(library.stagePicked) || library.sessions[0].npcIds.length > 0;
+      if (needsReset && !confirm("从头开始会清掉当前这场还没另外存下的进度。已经存好的档还在。")) return;
       view = "stage";
       location.hash = "stage";
-      const ok = await act({ type: "stage.select", stageId: button.dataset.stage });
+      forcePicker = false;
+      pickerIntent = "";
+      const ok = await act({ type: "run.start", stageId: button.dataset.stage });
       if (!ok) {
         forcePicker = true;
+        pickerIntent = "new";
+        render();
+      }
+    });
+  });
+  app.querySelectorAll("[data-continue]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      view = "stage";
+      location.hash = "stage";
+      forcePicker = false;
+      pickerIntent = "";
+      const ok = await act({ type: "save.load", saveId: button.dataset.continue });
+      if (!ok) {
+        forcePicker = true;
+        pickerIntent = "continue";
         render();
       }
     });
   });
   app.querySelector("#close-picker")?.addEventListener("click", () => {
     forcePicker = false;
+    pickerIntent = "";
     render();
   });
   app.querySelectorAll("[data-open-picker]").forEach((button) => {
