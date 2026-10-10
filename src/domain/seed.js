@@ -4,8 +4,10 @@
  */
 
 import { DEFAULT_STAGE_POSE, ensureCharacterPoses } from "./characters.js";
+import { defaultCloudSlots, ensureModelSlots } from "./models.js";
 import { ensureCurrentLocation } from "./scene.js";
 import { DEFAULT_SETTINGS, ensureSettings } from "./settings.js";
+import { clone } from "./util.js";
 
 export const SEEDED_AT = "2026-10-10T00:00:00.000Z";
 
@@ -96,37 +98,13 @@ export function createSeedLibrary() {
       provider: "local",
       localBaseUrl: "http://127.0.0.1:11434/v1",
       localModel: "",
+      localModels: [],
       cloudBaseUrl: "",
       cloudApiKey: "",
       cloudModel: "",
       localProbe: null,
       remindRetest: false,
-      cloudSlots: [
-        {
-          id: "slot-deepseek",
-          label: "DeepSeek",
-          baseUrl: "https://api.deepseek.com/v1",
-          model: "",
-          apiKey: "",
-          characterIds: [],
-        },
-        {
-          id: "slot-qwen",
-          label: "通义千问",
-          baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-          model: "",
-          apiKey: "",
-          characterIds: [],
-        },
-        {
-          id: "slot-extra",
-          label: "另一家云端",
-          baseUrl: "",
-          model: "",
-          apiKey: "",
-          characterIds: [],
-        },
-      ],
+      cloudSlots: defaultCloudSlots(),
     },
     guide: {
       completed: false,
@@ -139,7 +117,7 @@ export function createSeedLibrary() {
 
 export function migrateLibrary(raw) {
   if (raw && raw.revision >= 2 && Array.isArray(raw.worldBooks) && Array.isArray(raw.stages)) {
-    return ensureCurrentLocation(ensureCharacterPoses(ensureSettings(raw)));
+    return ensureLibraryModel(ensureCurrentLocation(ensureCharacterPoses(ensureSettings(raw))));
   }
   const seed = createSeedLibrary();
   if (raw?.guide) {
@@ -157,8 +135,34 @@ export function migrateLibrary(raw) {
     if (raw.model.cloudApiKey) seed.model.cloudApiKey = String(raw.model.cloudApiKey);
     if (raw.model.cloudModel) seed.model.cloudModel = String(raw.model.cloudModel);
     if (raw.model.localProbe) seed.model.localProbe = raw.model.localProbe;
+    if (Array.isArray(raw.model.cloudSlots)) {
+      seed.model.cloudSlots = raw.model.cloudSlots.map((slot) => ({ ...slot }));
+      ensureModelSlots(seed.model);
+    }
   }
   return seed;
+}
+
+function ensureLibraryModel(library) {
+  if (!library?.model) return library;
+  const model = library.model;
+  const slots = model.cloudSlots || [];
+  const hasZhipu = slots.some((slot) => slot.id === "slot-zhipu" || slot.vendor === "zhipu");
+  const hasQwen = slots.some((slot) => slot.id === "slot-qwen" || slot.vendor === "qwen");
+  const ready =
+    Array.isArray(model.localModels) &&
+    hasZhipu &&
+    hasQwen &&
+    slots.every((slot) => slot.vendor && Array.isArray(slot.characterIds)) &&
+    slots.every((slot) => {
+      if (slot.vendor === "zhipu" || slot.id === "slot-zhipu") return Boolean(slot.baseUrl);
+      if (slot.vendor === "qwen" || slot.id === "slot-qwen") return Boolean(slot.baseUrl);
+      return true;
+    });
+  if (ready) return library;
+  const next = clone(library);
+  ensureModelSlots(next.model);
+  return next;
 }
 
 function player() {

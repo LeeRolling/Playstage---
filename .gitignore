@@ -2,5 +2,8 @@ node_modules/
 data/*.json
 !data/library.seed.json
 data/media/
+data/github-token.txt
+data/skip-update.txt
+.update-staging/
 .DS_Store
 *.log

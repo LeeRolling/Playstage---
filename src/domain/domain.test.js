@@ -3,9 +3,9 @@ import fs from "node:fs";
 import test from "node:test";
 import { adviseFromVram, describePrerequisites } from "./guide.js";
 import { createSeedLibrary, migrateLibrary } from "./library.js";
-import { LOCAL_CONNECTED_NOTE, armModelRetest } from "./models.js";
+import { LOCAL_CONNECTED_NOTE, actingTarget, armModelRetest } from "./models.js";
 import { resolveScene } from "./scene.js";
-import { dispatch, sessionForm, toPublicLibrary } from "./index.js";
+import { buildActingMessages, commitNpcReply, dispatch, finishCoolDown, planSpeakers, sessionForm, toPublicLibrary } from "./index.js";
 import { resolveUiSkin } from "./settings.js";
 
 test("开局有三本世界书，一场戏还没把九个人请上台", () => {
@@ -184,31 +184,50 @@ test("可以自己加地点，王宫大门不会误判成王宫内部", () => {
   assert.equal(saved.imageFile, "data/media/ferry-day.jpg");
 });
 
-test("轮流发言会轮换占位回复", () => {
+test("轮流只安排下一位，写回台词后光标前进", () => {
   let library = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-frost" }).library;
   library = dispatch(library, { type: "session.send", text: "开场" }).library;
+  let plan = planSpeakers(library);
+  assert.equal(plan.mode, "turn");
+  assert.equal(plan.speakers.length, 1);
+  assert.equal(plan.speakers[0].name, "Astrid");
+  assert.equal(
+    library.sessions[0].messages.some((item) => item.kind === "npc"),
+    false,
+  );
+  library = commitNpcReply(library, plan.speakers[0].id, "Astrid：我在门边。");
+  assert.equal(library.sessions[0].messages.at(-1).speakerName, "Astrid");
+  assert.equal(library.sessions[0].messages.at(-1).text, "我在门边。");
+  assert.equal(library.sessions[0].turnCursor, 1);
   library = dispatch(library, { type: "session.send", text: "下一句" }).library;
-  const npcLines = library.sessions[0].messages.filter((item) => item.kind === "npc");
-  assert.equal(npcLines.length, 2);
-  assert.equal(npcLines[0].speakerName, "Astrid");
-  assert.equal(npcLines[1].speakerName, "Sigrid");
-  assert.match(npcLines[0].text, /占位/);
+  plan = planSpeakers(library);
+  assert.equal(plan.speakers[0].name, "Sigrid");
 });
 
-test("抢话会停下，点名才回应", () => {
+test("抢话最多两句后冷静，点名才安排回应", () => {
   let library = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-frost" }).library;
   library = dispatch(library, { type: "session.setMode", mode: "interrupt" }).library;
   library = dispatch(library, { type: "session.send", text: "我饿了" }).library;
-  const last = library.sessions[0].messages.at(-1);
-  assert.equal(last.kind, "system");
-  assert.match(last.text, /冷静/);
+  const plan = planSpeakers(library);
+  assert.equal(plan.coolDown, true);
+  assert.equal(plan.speakers.length, 2);
+  assert.equal(plan.speakers[0].name, "Astrid");
+  assert.equal(plan.speakers[1].name, "Sigrid");
+  library = commitNpcReply(library, plan.speakers[0].id, "炉火边还有面包。");
+  library = commitNpcReply(library, plan.speakers[1].id, "那就先吃这个，别的明天再说。");
+  library = finishCoolDown(library);
+  assert.equal(library.sessions[0].messages.at(-1).kind, "system");
+  assert.match(library.sessions[0].messages.at(-1).text, /冷静/);
+  assert.equal(library.sessions[0].messages.filter((item) => item.kind === "npc").length, 2);
 
   library = dispatch(library, { type: "session.setMode", mode: "direct" }).library;
   library = dispatch(library, { type: "session.send", text: "大家好" }).library;
   assert.equal(library.sessions[0].messages.at(-1).kind, "system");
+  assert.equal(planSpeakers(library).speakers.length, 0);
   library = dispatch(library, { type: "session.send", text: "Elin，看这边" }).library;
-  const named = [...library.sessions[0].messages].reverse().find((item) => item.kind === "npc");
-  assert.equal(named.speakerName, "Elin");
+  const named = planSpeakers(library);
+  assert.equal(named.speakers.length, 1);
+  assert.equal(named.speakers[0].name, "Elin");
 });
 
 test("存档后再说话，读档会回到存档时", () => {
@@ -426,10 +445,11 @@ test("空着的云端钥匙不会把已保存的钥匙擦掉", () => {
 test("一个云端接口最多绑三位", () => {
   let library = dispatch(createSeedLibrary(), {
     type: "model.updateSlot",
-    slotId: "slot-deepseek",
+    slotId: "slot-zhipu",
     characterIds: ["npc-chutang", "npc-xingxuan"],
   }).library;
-  assert.deepEqual(library.model.cloudSlots[0].characterIds, ["npc-chutang", "npc-xingxuan"]);
+  const zhipu = library.model.cloudSlots.find((item) => item.id === "slot-zhipu");
+  assert.deepEqual(zhipu.characterIds, ["npc-chutang", "npc-xingxuan"]);
   assert.throws(
     () =>
       dispatch(library, {
@@ -439,9 +459,9 @@ test("一个云端接口最多绑三位", () => {
       }),
     /最多绑三位/,
   );
-  library.model.cloudSlots[0].apiKey = "slot-secret";
-  library = dispatch(library, { type: "model.updateSlot", slotId: "slot-deepseek", apiKey: "" }).library;
-  assert.equal(library.model.cloudSlots[0].apiKey, "slot-secret");
+  zhipu.apiKey = "slot-secret";
+  library = dispatch(library, { type: "model.updateSlot", slotId: "slot-zhipu", apiKey: "" }).library;
+  assert.equal(library.model.cloudSlots.find((item) => item.id === "slot-zhipu").apiKey, "slot-secret");
 });
 
 test("本机连上后的句子固定，下次打开会提醒再测", () => {
@@ -449,11 +469,45 @@ test("本机连上后的句子固定，下次打开会提醒再测", () => {
     type: "model.recordProbe",
     ok: true,
     message: LOCAL_CONNECTED_NOTE,
+    models: ["qwen-local"],
   }).library;
-  assert.equal(library.model.localProbe.message, "连上了。这一版还不会用它来演戏，只确认路是通的。");
+  assert.equal(library.model.localProbe.message, LOCAL_CONNECTED_NOTE);
+  assert.match(LOCAL_CONNECTED_NOTE, /不附带模型/);
   assert.equal(library.model.remindRetest, false);
+  assert.deepEqual(toPublicLibrary(library).model.localModels, ["qwen-local"]);
   library = armModelRetest(library);
   assert.equal(library.model.remindRetest, true);
+});
+
+test("提示词带上世界书和刚说的话，钥匙不进界面", () => {
+  let library = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-frost" }).library;
+  library = dispatch(library, { type: "session.send", text: "霜税还没结" }).library;
+  const messages = buildActingMessages(library, "npc-astrid", { mode: "turn", index: 0, total: 1 });
+  assert.equal(messages[0].role, "system");
+  assert.match(messages[0].content, /霜印王国/);
+  assert.match(messages[0].content, /禁忌/);
+  assert.match(messages[0].content, /霜税还没结/);
+  assert.match(messages[0].content, /Astrid/);
+  assert.match(messages[0].content, /严格轮流/);
+  library = dispatch(library, {
+    type: "model.update",
+    provider: "qwen",
+    qwenModel: "qwen-plus",
+    qwenApiKey: "secret-qwen",
+  }).library;
+  const target = actingTarget(library);
+  assert.equal(target.ok, true);
+  assert.equal(target.label, "通义千问");
+  assert.equal(target.model, "qwen-plus");
+  assert.equal(target.apiKey, "secret-qwen");
+  assert.equal(target.baseUrl, "https://dashscope.aliyuncs.com/compatible-mode/v1");
+  const published = JSON.stringify(toPublicLibrary(library));
+  assert.equal(published.includes("secret-qwen"), false);
+  assert.equal(toPublicLibrary(library).model.qwen.apiKeySet, true);
+  const missing = actingTarget(dispatch(createSeedLibrary(), { type: "model.update", provider: "zhipu", zhipuModel: "glm-4-flash" }).library);
+  assert.equal(missing.ok, false);
+  assert.match(missing.message, /智谱/);
+  assert.equal(JSON.stringify(missing).includes("apiKey"), false);
 });
 
 test("显存建议提到 canirun，且不承诺代下模型", () => {
@@ -493,6 +547,37 @@ test("旧的单本世界书会迁到三座舞台，并留下引导和钥匙", ()
   assert.equal(next.guide.completed, true);
   assert.equal(next.model.cloudApiKey, "kept");
   assert.equal(next.model.localModel, "demo-local");
+  assert.ok(next.model.cloudSlots.some((item) => item.id === "slot-zhipu"));
+  assert.ok(next.model.cloudSlots.some((item) => item.id === "slot-qwen"));
+});
+
+test("旧资料库会补上智谱栏，已经写下的千问钥匙还在", () => {
+  const old = createSeedLibrary();
+  old.model.localModels = undefined;
+  old.model.cloudSlots = [
+    {
+      id: "slot-deepseek",
+      label: "DeepSeek",
+      baseUrl: "https://api.deepseek.com/v1",
+      model: "deepseek-chat",
+      apiKey: "dk",
+      characterIds: [],
+    },
+    {
+      id: "slot-qwen",
+      label: "通义千问",
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      model: "qwen-plus",
+      apiKey: "qk",
+      characterIds: ["npc-astrid"],
+    },
+  ];
+  const next = migrateLibrary(old);
+  assert.notEqual(next, old);
+  assert.equal(next.model.cloudSlots.find((item) => item.id === "slot-qwen").apiKey, "qk");
+  assert.equal(next.model.cloudSlots.find((item) => item.id === "slot-deepseek").apiKey, "dk");
+  assert.equal(next.model.cloudSlots.find((item) => item.id === "slot-zhipu").baseUrl, "https://open.bigmodel.cn/api/paas/v4");
+  assert.equal(old.model.cloudSlots.some((item) => item.id === "slot-zhipu"), false);
 });
 
 test("立绘大小默认是大，对话框默认是矮，并且会留下来", () => {

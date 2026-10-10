@@ -16,9 +16,13 @@ import {
   LOCAL_CONNECTED_NOTE,
   recordProbe,
   toPublicLibrary,
+  updateModel,
 } from "../domain/index.js";
+import { completeChat, probeBackend } from "./chat.js";
 import { readHardware } from "./hardware.js";
+import { replyToPlayer } from "./reply.js";
 import { openStore } from "./store.js";
+import { checkAndApplyUpdate, takeUpdateNote } from "./update.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const uiDir = path.join(root, "src/ui");
@@ -46,6 +50,9 @@ const types = {
   ".gif": "image/gif",
 };
 
+let replying = false;
+const updateNotice = takeUpdateNote(root) || { message: "", tone: "ok" };
+
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url || "/", `http://${host}`);
@@ -57,21 +64,48 @@ const server = http.createServer(async (request, response) => {
         hardware,
         prerequisites: describePrerequisites({ ollamaReachable }),
         dataFile: store.file,
+        update: updateNotice.message ? { message: updateNotice.message, tone: updateNotice.tone } : null,
       });
     }
     if (url.pathname === "/api/act" && request.method === "POST") {
       const action = await readJson(request);
+      if (action.type === "session.send") {
+        if (replying) {
+          return send(response, 200, {
+            library: toPublicLibrary(library),
+            message: "上一句还在等回复。请稍等一下再送。",
+            tone: "bad",
+          });
+        }
+        replying = true;
+        try {
+          const outcome = await replyToPlayer(library, action.text, (target, messages) => completeChat(target, messages));
+          library = outcome.library;
+          store.save(library);
+          return send(response, 200, {
+            library: toPublicLibrary(library),
+            message: outcome.message || "",
+            tone: outcome.tone === "bad" ? "bad" : "ok",
+          });
+        } finally {
+          replying = false;
+        }
+      }
       const result = dispatch(library, action);
       library = result.library;
       store.save(library);
       return send(response, 200, {
         library: toPublicLibrary(library),
         message: result.message || "",
+        tone: "ok",
         download: result.download || null,
       });
     }
     if (url.pathname === "/api/model/test" && request.method === "POST") {
       const result = await testLocal(library.model);
+      if (result.ok && result.models?.length === 1 && !String(library.model.localModel || "").trim()) {
+        library = updateModel(library, { localModel: result.models[0] });
+      }
       library = recordProbe(library, result);
       store.save(library);
       return send(response, 200, { ...result, library: toPublicLibrary(library) });
@@ -104,7 +138,36 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, host, () => {
+boot().catch((error) => {
+  console.error("剧戏台没有启动成功。", error instanceof Error ? error.message : error);
+  process.exit(1);
+});
+
+async function boot() {
+  if (process.env.PLAYSTAGE_UPDATE_ATTEMPT !== "1") {
+    const result = await checkAndApplyUpdate({ root });
+    if (result.action === "restart") {
+      console.log("");
+      console.log(result.message);
+      console.log("");
+      const child = spawn(process.execPath, process.argv.slice(1), {
+        cwd: root,
+        stdio: "inherit",
+        env: { ...process.env, PLAYSTAGE_UPDATE_ATTEMPT: "1" },
+      });
+      child.on("exit", (code) => process.exit(code ?? 0));
+      return;
+    }
+    if (result.message) {
+      updateNotice.message = result.message;
+      updateNotice.tone = result.tone === "bad" ? "bad" : "ok";
+      console.log(result.message);
+    }
+  }
+  await new Promise((resolve, reject) => {
+    server.listen(port, host, () => resolve());
+    server.once("error", reject);
+  });
   const page = `http://${host}:${port}`;
   console.log("");
   console.log("剧戏台已在这台电脑上打开。");
@@ -112,7 +175,7 @@ server.listen(port, host, () => {
   console.log("关掉这个窗口，剧戏台就会停止。");
   console.log("");
   openBrowser(page);
-});
+}
 
 server.on("error", (error) => {
   if (error.code === "EADDRINUSE") {
@@ -189,42 +252,26 @@ async function testLocal(model) {
   if (!base) {
     return {
       ok: false,
-      message: "先填写本机地址。Ollama 常见是 http://127.0.0.1:11434/v1 。安装推理软件需要你自己完成。",
+      models: [],
+      message: "先填写本机地址。Ollama 常见是 http://127.0.0.1:11434 ，或带 /v1 的地址。安装推理软件和模型需要你自己完成。",
     };
   }
-  return probeModels(base, null, LOCAL_CONNECTED_NOTE);
+  return probeBackend({ baseUrl: base, apiKey: "", model: model.localModel || "" }, fetch, LOCAL_CONNECTED_NOTE);
 }
 
 async function testSlot(slot) {
   if (!slot.baseUrl) {
-    return { ok: false, message: "先填写这家云端的地址。钥匙只留在这台电脑上。这一版还不会拿它来演戏。" };
+    return { ok: false, message: "先填写这家云端的地址。钥匙只留在这台电脑上。" };
   }
-  return probeModels(
-    slot.baseUrl,
-    slot.apiKey,
-    "这家云端有回应。还不会用它来演戏，只是确认地址通不通。",
+  if (!slot.apiKey) {
+    return { ok: false, message: `先填写${slot.label || "这家云端"}的钥匙，保存后再测试。钥匙只留在这台电脑上。` };
+  }
+  const label = slot.label || "这家云端";
+  return probeBackend(
+    { baseUrl: slot.baseUrl, apiKey: slot.apiKey, model: slot.model || "" },
+    fetch,
+    `${label}有回应。上台并选中它之后，就会用它来接话。剧戏台不附带模型。`,
   );
-}
-
-async function probeModels(base, apiKey, okMessage) {
-  const url = `${String(base).replace(/\/$/, "")}/models`;
-  const headers = {};
-  if (apiKey) headers.authorization = `Bearer ${apiKey}`;
-  try {
-    const result = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
-    if (!result.ok) {
-      return {
-        ok: false,
-        message: `地址有反应，但返回了 ${result.status}。请核对地址${apiKey ? "和钥匙" : "和模型名"}。剧戏台不附带模型。`,
-      };
-    }
-    return { ok: true, message: okMessage };
-  } catch {
-    return {
-      ok: false,
-      message: "连不上。请确认本机推理软件已经打开，或云端地址和钥匙填写正确。下载和安装模型需要你自己完成。",
-    };
-  }
 }
 
 async function probeOllama(localBaseUrl) {

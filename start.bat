@@ -8,6 +8,7 @@ if errorlevel 1 goto nonode
 
 echo.
 echo 剧戏台正在本机启动。
+echo 若能连上 GitHub，会看看私有仓库有没有新版本。连不上或跳过，也会用现在这份打开。
 echo 请用浏览器打开： http://127.0.0.1:4173
 echo 如果浏览器没有自动弹出，请把上面的地址复制进去。
 echo 关掉这个窗口，剧戏台就会停止。

@@ -10,6 +10,7 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 echo ""
 echo "剧戏台正在本机启动。"
+echo "若能连上 GitHub，会看看私有仓库有没有新版本。连不上或跳过，也会用现在这份打开。"
 echo "请用浏览器打开： http://127.0.0.1:4173"
 echo "关掉这个窗口，剧戏台就会停止。"
 echo ""

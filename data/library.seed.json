@@ -583,6 +583,7 @@
     "provider": "local",
     "localBaseUrl": "http://127.0.0.1:11434/v1",
     "localModel": "",
+    "localModels": [],
     "cloudBaseUrl": "",
     "cloudApiKey": "",
     "cloudModel": "",
@@ -590,9 +591,10 @@
     "remindRetest": false,
     "cloudSlots": [
       {
-        "id": "slot-deepseek",
-        "label": "DeepSeek",
-        "baseUrl": "https://api.deepseek.com/v1",
+        "id": "slot-zhipu",
+        "label": "智谱",
+        "vendor": "zhipu",
+        "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
         "model": "",
         "apiKey": "",
         "characterIds": []
@@ -600,6 +602,7 @@
       {
         "id": "slot-qwen",
         "label": "通义千问",
+        "vendor": "qwen",
         "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "model": "",
         "apiKey": "",
@@ -608,6 +611,7 @@
       {
         "id": "slot-extra",
         "label": "另一家云端",
+        "vendor": "custom",
         "baseUrl": "",
         "model": "",
         "apiKey": "",

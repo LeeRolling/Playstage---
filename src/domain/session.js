@@ -13,6 +13,12 @@ export function sessionForm(session) {
   return session.npcIds.length > 1 ? "group" : "duo";
 }
 
+export function aliveNpcs(library, session) {
+  return session.npcIds
+    .map((id) => library.characters.find((item) => item.id === id && item.kind === "npc"))
+    .filter((npc) => npc && session.state?.alive?.[npc.id] !== false);
+}
+
 export function sessionFormLabel(session) {
   if (session.npcIds.length === 0) return "还没开场";
   return sessionForm(session) === "group" ? "群聊" : "一对一";
@@ -103,75 +109,66 @@ export function sendPlayerLine(library, text) {
     );
   }
 
-  const npcs = session.npcIds
-    .map((id) => next.characters.find((item) => item.id === id))
-    .filter(Boolean);
-  const draft = draftMock(session, npcs, line);
-  if (draft.reply) session.messages.push(draft.reply);
-  if (draft.aside) session.messages.push(draft.aside);
-  session.turnCursor = draft.turnCursor;
+  const npcs = aliveNpcs(next, session);
+  if (npcs.length === 0) {
+    session.messages.push(message("system", "戏台", "system", "台上还没有别的角色。到「这场」里请至少一位上来。"));
+    return next;
+  }
+  if (session.speakMode === "direct" && !npcs.some((npc) => line.includes(npc.name))) {
+    session.messages.push(
+      message("system", "戏台", "system", "点谁谁回：请在这句话里写上角色的名字，对方才会接话。没被点到的人先不说话。"),
+    );
+  }
   return next;
 }
 
-function draftMock(session, npcs, line) {
-  const snippet = line.length > 28 ? `${line.slice(0, 28)}…` : line;
-  if (npcs.length === 0) {
-    return {
-      reply: null,
-      aside: message("system", "戏台", "system", "台上还没有别的角色。到「这场」里请至少一位上来。"),
-      turnCursor: session.turnCursor || 0,
-    };
+export function commitNpcReply(library, speakerId, text) {
+  const next = clone(library);
+  const session = getSession(next);
+  const npc = next.characters.find((item) => item.id === speakerId && item.kind === "npc");
+  if (!npc) throw new Error("台上没有这个角色。");
+  const line = cleanSpokenLine(requireText(text, "模型没有说出内容。"), npc.name);
+  if (!line) throw new Error("模型没有说出内容。");
+  session.messages.push(message(npc.id, npc.name, "npc", line));
+  if (session.speakMode === "turn") {
+    const alive = aliveNpcs(next, session);
+    const index = alive.findIndex((item) => item.id === npc.id);
+    session.turnCursor = alive.length ? (Math.max(index, 0) + 1) % alive.length : 0;
   }
-
-  if (session.speakMode === "direct") {
-    const named = npcs.find((npc) => line.includes(npc.name));
-    if (!named) {
-      return {
-        reply: null,
-        aside: message(
-          "system",
-          "戏台",
-          "system",
-          "点谁谁回：请在这句话里写上角色的名字，对方才会接话。没被点到的人先不说话。",
-        ),
-        turnCursor: session.turnCursor || 0,
-      };
-    }
-    return {
-      reply: mockLine(named, `你点到了我。关于「${snippet}」，我先应一声。这仍是占位回复，还没有模型。`),
-      aside: null,
-      turnCursor: session.turnCursor || 0,
-    };
-  }
-
-  if (session.speakMode === "interrupt") {
-    const speaker = npcs[0];
-    return {
-      reply: mockLine(speaker, `先接你这句「${snippet}」。话题先收到这里，本轮停下。`),
-      aside: message(
-        "system",
-        "戏台",
-        "system",
-        "冷静回合（占位）：抢话先停住，避免角色互相刷屏。以后会按对话链条收束，这一版只示范「会停」。",
-      ),
-      turnCursor: session.turnCursor || 0,
-    };
-  }
-
-  const cursor = session.turnCursor || 0;
-  const speaker = npcs[cursor % npcs.length];
-  return {
-    reply: mockLine(
-      speaker,
-      `轮到我说。听见「${snippet}」。下一位再接。这是占位回复，不是模型生成的。`,
-    ),
-    aside: null,
-    turnCursor: (cursor + 1) % npcs.length,
-  };
+  return next;
 }
 
-function mockLine(npc, text) {
-  return message(npc.id, npc.name, "npc", `（占位，尚未连接模型）${text}`);
+export function finishCoolDown(library) {
+  const next = clone(library);
+  const session = getSession(next);
+  const alive = aliveNpcs(next, session);
+  const cursor = session.turnCursor || 0;
+  session.turnCursor = alive.length ? (cursor + 1) % alive.length : 0;
+  session.messages.push(
+    message("system", "戏台", "system", "冷静回合：这一轮先收到这里，避免角色互相接着刷屏。你再开口，才会继续。"),
+  );
+  return next;
+}
+
+export function appendSystemLine(library, text) {
+  const next = clone(library);
+  const session = getSession(next);
+  session.messages.push(message("system", "戏台", "system", requireText(text, "没有可显示的提示。")));
+  return next;
+}
+
+function cleanSpokenLine(text, name) {
+  let value = String(text || "").trim();
+  value = value.replace(/^```[\w]*\n?/, "").replace(/```$/, "").trim();
+  const paragraph = value.split(/\n{2,}/).map((item) => item.trim()).find(Boolean) || value;
+  value = paragraph.replace(new RegExp(`^${escapeReg(name)}\\s*[：:]\\s*`), "");
+  value = value.replace(/^[「"]/, "").replace(/[」"]$/, "").trim();
+  if (value.length > 600) value = `${value.slice(0, 600)}…`;
+  return value;
+}
+
+function escapeReg(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function message(speakerId, speakerName, kind, text) {
