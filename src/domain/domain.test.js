@@ -88,6 +88,79 @@ test("说话里提到地点会换景，特殊情景没图时只做标记", () =>
   );
 });
 
+test("地点下拉只列当前世界书，选中的地点一定在这份名单里", () => {
+  const azure = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-azure" }).library;
+  const scene = toPublicLibrary(azure).view.scene;
+  assert.equal(scene.locationId, "loc-azure-town");
+  assert.equal(scene.locationName, "城镇");
+  assert.deepEqual(
+    scene.locations.map((item) => item.name),
+    ["城镇", "村庄", "皇宫"],
+  );
+  assert.equal(
+    scene.locations.some((item) => item.id === scene.locationId),
+    true,
+  );
+
+  const palace = dispatch(azure, { type: "session.setLocation", locationId: "loc-azure-palace" }).library;
+  assert.equal(palace.sessions[0].state.locationId, "loc-azure-palace");
+  assert.equal(toPublicLibrary(palace).view.scene.locationName, "皇宫");
+
+  const neon = dispatch(palace, { type: "stage.select", stageId: "stage-neon" }).library;
+  const neonScene = toPublicLibrary(neon).view.scene;
+  assert.equal(neonScene.locationId, "loc-neon-center");
+  assert.equal(neonScene.locationName, "城市中心");
+  assert.equal(
+    neonScene.locations.some((item) => item.id === "loc-azure-palace"),
+    false,
+  );
+  assert.equal(
+    neonScene.locations.some((item) => item.id === neonScene.locationId),
+    true,
+  );
+
+  const stale = JSON.parse(JSON.stringify(azure));
+  stale.sessions[0].state.locationId = "loc-frost-town";
+  stale.sessions[0].state.activeTriggerId = "trig-frost-gate";
+  const migrated = migrateLibrary(stale);
+  assert.notEqual(migrated, stale);
+  assert.equal(stale.sessions[0].state.locationId, "loc-frost-town");
+  assert.equal(migrated.sessions[0].state.locationId, "loc-azure-town");
+  assert.equal(migrated.sessions[0].state.activeTriggerId, "");
+  const repaired = toPublicLibrary(stale);
+  assert.equal(repaired.sessions[0].state.locationId, "loc-azure-town");
+  assert.equal(repaired.view.scene.locationId, "loc-azure-town");
+  assert.equal(repaired.view.scene.locationName, "城镇");
+  assert.equal(
+    repaired.view.scene.locations.some((item) => item.id === repaired.view.scene.locationId),
+    true,
+  );
+  assert.equal(
+    repaired.view.scene.locations.some((item) => item.id === "loc-frost-town"),
+    false,
+  );
+
+  const blank = JSON.parse(JSON.stringify(azure));
+  blank.sessions[0].state.locationId = "";
+  blank.sessions[0].state.timeOfDay = "night";
+  const filled = migrateLibrary(blank);
+  assert.equal(filled.sessions[0].state.locationId, "loc-azure-town");
+  assert.equal(filled.sessions[0].state.timeOfDay, "night");
+
+  const village = JSON.parse(JSON.stringify(azure));
+  village.sessions[0].state.locationId = "loc-azure-village";
+  assert.equal(migrateLibrary(village).sessions[0].state.locationId, "loc-azure-village");
+  assert.equal(toPublicLibrary(village).view.scene.locationName, "村庄");
+
+  const dirty = JSON.parse(JSON.stringify(azure));
+  dirty.sessions[0].state.locationId = "missing-place";
+  dirty.sessions[0].state.activeTriggerId = "trig-azure-book";
+  const afterMode = dispatch(dirty, { type: "session.setMode", mode: "direct" }).library;
+  assert.equal(afterMode.sessions[0].speakMode, "direct");
+  assert.equal(afterMode.sessions[0].state.locationId, "loc-azure-town");
+  assert.equal(afterMode.sessions[0].state.activeTriggerId, "");
+});
+
 test("可以自己加地点，王宫大门不会误判成王宫内部", () => {
   let library = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-frost" }).library;
   library = dispatch(library, { type: "session.send", text: "我站在王宫大门" }).library;
@@ -237,9 +310,19 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
     fields: { stagePose: { x: 999, y: -999, scale: 9 } },
   });
   assert.deepEqual(clamped.library.characters.find((item) => item.id === "player-guest").stagePose, {
-    x: 80,
-    y: -30,
+    x: 100,
+    y: -100,
     scale: 2.4,
+  });
+  const edge = dispatch(seeded, {
+    type: "character.update",
+    id: "npc-xingxuan",
+    fields: { stagePose: { x: -100, y: 100, scale: 1 } },
+  });
+  assert.deepEqual(edge.library.characters.find((item) => item.id === "npc-xingxuan").stagePose, {
+    x: -100,
+    y: 100,
+    scale: 1,
   });
 
   const partial = dispatch(saved.library, {
@@ -302,8 +385,18 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
 
   const spec = toPublicLibrary(seeded).view.stagePose;
   assert.deepEqual(spec.defaults, { x: 0, y: 0, scale: 1.15 });
-  assert.deepEqual(spec.limits.x, { min: -80, max: 80, step: 1 });
-  assert.deepEqual(spec.limits.y, { min: -30, max: 30, step: 1 });
+  assert.deepEqual(spec.limits.x, { min: -100, max: 100, step: 1 });
+  assert.deepEqual(spec.limits.y, { min: -100, max: 100, step: 1 });
+  const keptEdge = migrateLibrary({
+    ...old,
+    characters: [{ id: "npc-astrid", stagePose: { x: 80, y: -30, scale: 1.15 } }],
+  });
+  assert.deepEqual(keptEdge.characters[0].stagePose, { x: 80, y: -30, scale: 1.15 });
+  const widened = migrateLibrary({
+    ...old,
+    characters: [{ id: "npc-astrid", stagePose: { x: 120, y: -140, scale: 1.15 } }],
+  });
+  assert.deepEqual(widened.characters[0].stagePose, { x: 100, y: -100, scale: 1.15 });
   assert.deepEqual(spec.limits.scale, { min: 0.4, max: 2.4, step: 0.05 });
 });
 

@@ -22,7 +22,7 @@ import {
   updateModel,
 } from "./models.js";
 import { createSave, loadSave, removeSave } from "./saves.js";
-import { resolveScene } from "./scene.js";
+import { ensureCurrentLocation, resolveScene } from "./scene.js";
 import { normalizeSettings, resolveUiSkin, skinName, UI_SKINS, updateSettings } from "./settings.js";
 import {
   getSession,
@@ -65,7 +65,7 @@ export {
 };
 
 export function toPublicLibrary(library) {
-  const next = clone(library);
+  const next = ensureCurrentLocation(clone(library));
   next.model = publicModel(library.model);
   const session = getSession(next);
   const settings = normalizeSettings(next.settings);
@@ -76,7 +76,7 @@ export function toPublicLibrary(library) {
     speakModeLabel: SPEAK_MODES[session.speakMode],
     disclaimer: DISCLAIMER,
     stagePicked: Boolean(library.stagePicked),
-    scene: resolveScene(library),
+    scene: resolveScene(next),
     skin: {
       id: skinId,
       name: skinName(skinId),
@@ -167,7 +167,7 @@ export function dispatch(library, action) {
 }
 
 function plain(library, message) {
-  return { library, message: message || "" };
+  return { library: ensureCurrentLocation(library), message: message || "" };
 }
 
 function settingsMessage(action) {
