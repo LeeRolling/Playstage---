@@ -711,9 +711,9 @@ function poseSpec() {
   return {
     defaults: spec?.defaults || { x: 0, y: 0, scale: 1.15 },
     limits: spec?.limits || {
-      x: { min: -48, max: 48, step: 1 },
+      x: { min: -80, max: 80, step: 1 },
       y: { min: -30, max: 30, step: 1 },
-      scale: { min: 0.4, max: 2.5, step: 0.05 },
+      scale: { min: 0.4, max: 2.4, step: 0.05 },
     },
   };
 }

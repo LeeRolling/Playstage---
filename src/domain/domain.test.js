@@ -237,9 +237,9 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
     fields: { stagePose: { x: 999, y: -999, scale: 9 } },
   });
   assert.deepEqual(clamped.library.characters.find((item) => item.id === "player-guest").stagePose, {
-    x: 48,
+    x: 80,
     y: -30,
-    scale: 2.5,
+    scale: 2.4,
   });
 
   const partial = dispatch(saved.library, {
@@ -287,7 +287,7 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
     ...old,
     characters: [{ id: "npc-astrid", stagePose: { x: "nope", y: 4, scale: 80, extra: true } }],
   });
-  assert.deepEqual(messy.characters[0].stagePose, { x: 0, y: 4, scale: 2.5 });
+  assert.deepEqual(messy.characters[0].stagePose, { x: 0, y: 4, scale: 2.4 });
 
   const stable = {
     revision: 2,
@@ -302,9 +302,9 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
 
   const spec = toPublicLibrary(seeded).view.stagePose;
   assert.deepEqual(spec.defaults, { x: 0, y: 0, scale: 1.15 });
-  assert.deepEqual(spec.limits.x, { min: -48, max: 48, step: 1 });
+  assert.deepEqual(spec.limits.x, { min: -80, max: 80, step: 1 });
   assert.deepEqual(spec.limits.y, { min: -30, max: 30, step: 1 });
-  assert.deepEqual(spec.limits.scale, { min: 0.4, max: 2.5, step: 0.05 });
+  assert.deepEqual(spec.limits.scale, { min: 0.4, max: 2.4, step: 0.05 });
 });
 
 test("剧情包占位导出含前文提要，导入只登记", () => {

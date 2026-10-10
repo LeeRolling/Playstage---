@@ -4,10 +4,10 @@ const KINDS = new Set(["player", "npc"]);
 
 /**
  * 每位角色在舞台上的位置和放大。记在人设上，每一场、每一座舞台都用这一套。
- * x：相对视口宽度的百分比，正数往右。
- * y：相对视口高度的百分比，正数往上。
+ * x：相对这张立绘自身宽度的百分比，正数往右。
+ * y：相对这张立绘自身高度的百分比，正数往上。
  * scale：全身立绘的放大倍数。1 相当于从前全局「大」；默认略大一点。
- * 缺字段时用默认值。极端值收到范围内，避免把锁住的戏台撑破。
+ * 缺字段时用默认值。极端值收到范围内，人仍留在锁住的戏台里。
  */
 export const DEFAULT_STAGE_POSE = {
   x: 0,
@@ -16,9 +16,9 @@ export const DEFAULT_STAGE_POSE = {
 };
 
 export const STAGE_POSE_LIMITS = {
-  x: { min: -48, max: 48, step: 1 },
+  x: { min: -80, max: 80, step: 1 },
   y: { min: -30, max: 30, step: 1 },
-  scale: { min: 0.4, max: 2.5, step: 0.05 },
+  scale: { min: 0.4, max: 2.4, step: 0.05 },
 };
 
 export function freshStagePose() {

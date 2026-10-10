@@ -311,8 +311,6 @@ button { cursor: pointer; }
   text-align: center;
   filter: brightness(1);
   transition: filter 180ms ease;
-  transform-origin: center bottom;
-  transform: translate(calc(var(--pose-x, 0) * 1vw), calc(var(--pose-y, 0) * -1vh)) scale(var(--pose-scale, 1.15));
 }
 
 .sprite.is-quiet {
@@ -324,6 +322,8 @@ button { cursor: pointer; }
   width: 100%;
   height: min(calc(78vh * var(--sprite-scale)), calc(920px * var(--sprite-scale)));
   max-height: 100%;
+  transform-origin: center bottom;
+  transform: translate(calc(var(--pose-x, 0) * 1%), calc(var(--pose-y, 0) * -1%)) scale(var(--pose-scale, 1.15));
   border-radius: 160px 160px 18px 18px;
   background:
     radial-gradient(circle at 50% 86px, #f7f1e6 0 42px, transparent 43px),
