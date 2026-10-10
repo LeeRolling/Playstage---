@@ -17,7 +17,7 @@ import {
 } from "./models.js";
 import { createSave, loadSave, removeSave } from "./saves.js";
 import { resolveScene } from "./scene.js";
-import { updateSettings } from "./settings.js";
+import { normalizeSettings, resolveUiSkin, skinName, UI_SKINS, updateSettings } from "./settings.js";
 import {
   getSession,
   sendPlayerLine,
@@ -62,6 +62,8 @@ export function toPublicLibrary(library) {
   const next = clone(library);
   next.model = publicModel(library.model);
   const session = getSession(next);
+  const settings = normalizeSettings(next.settings);
+  const skinId = resolveUiSkin(library);
   next.view = {
     form: sessionForm(session),
     formLabel: sessionFormLabel(session),
@@ -69,6 +71,13 @@ export function toPublicLibrary(library) {
     disclaimer: DISCLAIMER,
     stagePicked: Boolean(library.stagePicked),
     scene: resolveScene(library),
+    skin: {
+      id: skinId,
+      name: skinName(skinId),
+      mode: settings.uiSkinMode,
+      chosen: settings.uiSkin,
+    },
+    skins: UI_SKINS.map((item) => ({ id: item.id, name: item.name })),
   };
   return next;
 }
@@ -150,7 +159,14 @@ function plain(library, message) {
 function settingsMessage(action) {
   const sprite = action.spriteScale != null && action.spriteScale !== "";
   const dialog = action.dialogScale != null && action.dialogScale !== "";
-  if (sprite && !dialog) return "立绘大小已留在这台电脑上。";
-  if (dialog && !sprite) return "对话框高度已留在这台电脑上。";
+  const skin = (action.uiSkin != null && action.uiSkin !== "") || (action.uiSkinMode != null && action.uiSkinMode !== "");
+  const touched = [sprite, dialog, skin].filter(Boolean).length;
+  if (touched > 1) return "台上的偏好已留在这台电脑上。";
+  if (sprite) return "立绘大小已留在这台电脑上。";
+  if (dialog) return "对话框高度已留在这台电脑上。";
+  if (skin && action.uiSkinMode === "auto" && (action.uiSkin == null || action.uiSkin === "")) {
+    return "皮肤会跟着当前舞台走。";
+  }
+  if (skin) return "皮肤已留在这台电脑上。";
   return "台上的大小已留在这台电脑上。";
 }
