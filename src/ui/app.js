@@ -661,11 +661,13 @@ function bind() {
   app.querySelectorAll("[data-stage]").forEach((button) => {
     button.addEventListener("click", async () => {
       if (library.stagePicked && !confirm("换舞台会把在场的人换成那三位。已经说过的话还留着。")) return;
+      forcePicker = false;
+      view = "stage";
+      location.hash = "stage";
       const ok = await act({ type: "stage.select", stageId: button.dataset.stage });
-      if (ok) {
-        forcePicker = false;
-        view = "stage";
-        location.hash = "stage";
+      if (!ok) {
+        forcePicker = true;
+        render();
       }
     });
   });
@@ -892,8 +894,12 @@ function bind() {
       render();
       return;
     }
+    guideOpen = false;
     const ok = await act({ type: "guide.complete", disclaimerAccepted: true });
-    if (ok) guideOpen = false;
+    if (!ok) {
+      guideOpen = true;
+      render();
+    }
   });
 }
 
