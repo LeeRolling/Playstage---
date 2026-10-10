@@ -1,0 +1,15 @@
+{
+  "name": "playstage",
+  "private": true,
+  "version": "0.1.0",
+  "description": "剧戏台 — 本地优先的多角色文字演戏（第一版骨架）",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server/index.js",
+    "test": "node --test src/domain/*.test.js",
+    "check": "node scripts/check-boundaries.js && node --test src/domain/*.test.js"
+  }
+}
