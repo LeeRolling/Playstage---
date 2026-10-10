@@ -1,6 +1,7 @@
 /**
  * 本地服务只做两件事：把界面文件交给浏览器，把操作转给功能层。
  * 发言规则、存档和人设都在 src/domain，不写在这里。
+ * 图片文件的读写留在这一层：功能层只记路径。
  */
 
 import fs from "node:fs";
@@ -8,22 +9,41 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import { dispatch, toPublicLibrary } from "../domain/index.js";
+import {
+  armModelRetest,
+  describePrerequisites,
+  dispatch,
+  LOCAL_CONNECTED_NOTE,
+  recordProbe,
+  toPublicLibrary,
+} from "../domain/index.js";
 import { readHardware } from "./hardware.js";
 import { openStore } from "./store.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const uiDir = path.join(root, "src/ui");
+const assetsDir = path.join(root, "assets");
+const mediaDir = path.join(root, "data/media");
 const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "127.0.0.1";
 const store = openStore(path.join(root, "data"));
 let library = store.load();
+const armed = armModelRetest(library);
+if (armed !== library) {
+  library = armed;
+  store.save(library);
+}
 
 const types = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
 };
 
 const server = http.createServer(async (request, response) => {
@@ -31,9 +51,11 @@ const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || "/", `http://${host}`);
     if (url.pathname === "/api/bootstrap" && request.method === "GET") {
       const hardware = await readHardware();
+      const ollamaReachable = await probeOllama(library.model?.localBaseUrl);
       return send(response, 200, {
         library: toPublicLibrary(library),
         hardware,
+        prerequisites: describePrerequisites({ ollamaReachable }),
         dataFile: store.file,
       });
     }
@@ -49,10 +71,30 @@ const server = http.createServer(async (request, response) => {
       });
     }
     if (url.pathname === "/api/model/test" && request.method === "POST") {
-      return send(response, 200, await testModel(library.model));
+      const result = await testLocal(library.model);
+      library = recordProbe(library, result);
+      store.save(library);
+      return send(response, 200, { ...result, library: toPublicLibrary(library) });
+    }
+    if (url.pathname === "/api/model/test-slot" && request.method === "POST") {
+      const body = await readJson(request, { requireType: false, limit: 40_000 });
+      const slot = library.model.cloudSlots?.find((item) => item.id === body.slotId);
+      if (!slot) return send(response, 400, { ok: false, message: "没有这个云端接口。" });
+      return send(response, 200, await testSlot(slot));
+    }
+    if (url.pathname === "/api/media" && request.method === "POST") {
+      const body = await readJson(request, { requireType: false, limit: 8_000_000 });
+      const saved = saveMedia(body.dataUrl);
+      return send(response, 200, saved);
     }
     if (url.pathname === "/api/health" && request.method === "GET") {
       return send(response, 200, { ok: true });
+    }
+    if (request.method === "GET" && url.pathname.startsWith("/assets/")) {
+      return sendRootFile(response, assetsDir, decodeURIComponent(url.pathname.slice("/assets/".length)));
+    }
+    if (request.method === "GET" && url.pathname.startsWith("/media/")) {
+      return sendRootFile(response, mediaDir, decodeURIComponent(url.pathname.slice("/media/".length)));
     }
     if (request.method === "GET") return sendFile(response, url.pathname);
     return send(response, 404, { message: "没有这个地址。" });
@@ -91,30 +133,36 @@ function send(response, status, body) {
 }
 
 function sendFile(response, pathname) {
-  const requested = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-  const file = path.resolve(uiDir, requested);
-  if (file !== uiDir && !file.startsWith(`${uiDir}${path.sep}`)) {
+  const requested = pathname === "/" ? "index.html" : decodeURIComponent(pathname.replace(/^\/+/, ""));
+  sendRootFile(response, uiDir, requested);
+}
+
+function sendRootFile(response, baseDir, requested) {
+  const file = path.resolve(baseDir, requested);
+  if (file !== baseDir && !file.startsWith(`${baseDir}${path.sep}`)) {
     response.writeHead(403);
     response.end("forbidden");
     return;
   }
   if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-    response.end("找不到页面。");
+    response.end("找不到这个文件。");
     return;
   }
-  const type = types[path.extname(file)] || "application/octet-stream";
+  const type = types[path.extname(file).toLowerCase()] || "application/octet-stream";
   response.writeHead(200, { "content-type": type, "cache-control": "no-store" });
   fs.createReadStream(file).pipe(response);
 }
 
-function readJson(request) {
+function readJson(request, options = {}) {
+  const limit = options.limit ?? 200_000;
+  const requireType = options.requireType !== false;
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
     request.on("data", (chunk) => {
       size += chunk.length;
-      if (size > 200_000) {
+      if (size > limit) {
         reject(new Error("这次提交太长了。"));
         request.destroy();
         return;
@@ -125,7 +173,7 @@ function readJson(request) {
       try {
         const text = Buffer.concat(chunks).toString("utf8") || "{}";
         const body = JSON.parse(text);
-        if (!body.type) reject(new Error("缺少要做的事情。"));
+        if (requireType && !body.type) reject(new Error("缺少要做的事情。"));
         else resolve(body);
       } catch (error) {
         if (error instanceof SyntaxError) reject(new Error("提交的内容读不懂。"));
@@ -136,35 +184,73 @@ function readJson(request) {
   });
 }
 
-async function testModel(model) {
-  const useCloud = model.provider === "cloud";
-  const base = useCloud ? model.cloudBaseUrl : model.localBaseUrl;
+async function testLocal(model) {
+  const base = model?.localBaseUrl;
   if (!base) {
     return {
       ok: false,
-      message: useCloud
-        ? "先填写云端地址。钥匙只留在这台电脑上。"
-        : "先填写本机地址。Ollama 常见是 http://127.0.0.1:11434/v1 。安装推理软件需要你自己完成。",
+      message: "先填写本机地址。Ollama 常见是 http://127.0.0.1:11434/v1 。安装推理软件需要你自己完成。",
     };
   }
-  const url = `${base.replace(/\/$/, "")}/models`;
+  return probeModels(base, null, LOCAL_CONNECTED_NOTE);
+}
+
+async function testSlot(slot) {
+  if (!slot.baseUrl) {
+    return { ok: false, message: "先填写这家云端的地址。钥匙只留在这台电脑上。这一版还不会拿它来演戏。" };
+  }
+  return probeModels(
+    slot.baseUrl,
+    slot.apiKey,
+    "这家云端有回应。还不会用它来演戏，只是确认地址通不通。",
+  );
+}
+
+async function probeModels(base, apiKey, okMessage) {
+  const url = `${String(base).replace(/\/$/, "")}/models`;
   const headers = {};
-  if (useCloud && model.cloudApiKey) headers.authorization = `Bearer ${model.cloudApiKey}`;
+  if (apiKey) headers.authorization = `Bearer ${apiKey}`;
   try {
     const result = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
     if (!result.ok) {
       return {
         ok: false,
-        message: `地址有反应，但返回了 ${result.status}。请核对地址和模型名。若用云端，再核对钥匙。剧戏台不附带模型。`,
+        message: `地址有反应，但返回了 ${result.status}。请核对地址${apiKey ? "和钥匙" : "和模型名"}。剧戏台不附带模型。`,
       };
     }
-    return { ok: true, message: "连上了。这一版还不会用它来演戏，只确认路是通的。" };
+    return { ok: true, message: okMessage };
   } catch {
     return {
       ok: false,
       message: "连不上。请确认本机推理软件已经打开，或云端地址和钥匙填写正确。下载和安装模型需要你自己完成。",
     };
   }
+}
+
+async function probeOllama(localBaseUrl) {
+  const candidates = ["http://127.0.0.1:11434/api/tags"];
+  if (localBaseUrl) candidates.push(`${String(localBaseUrl).replace(/\/$/, "")}/models`);
+  for (const url of candidates) {
+    try {
+      const result = await fetch(url, { signal: AbortSignal.timeout(800) });
+      if (result.ok) return true;
+    } catch {
+      // 连不上只是软提示，不挡开场。
+    }
+  }
+  return false;
+}
+
+function saveMedia(dataUrl) {
+  const match = /^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=\s]+)$/.exec(String(dataUrl || ""));
+  if (!match) throw new Error("请上传一张图片。裁剪后再保存。");
+  const ext = match[1] === "png" ? "png" : match[1] === "webp" ? "webp" : "jpg";
+  const buffer = Buffer.from(match[2].replace(/\s/g, ""), "base64");
+  if (!buffer.length || buffer.length > 6_000_000) throw new Error("这张图太大或是空的。");
+  fs.mkdirSync(mediaDir, { recursive: true });
+  const filename = `img-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.${ext}`;
+  fs.writeFileSync(path.join(mediaDir, filename), buffer);
+  return { path: `data/media/${filename}`, url: `/media/${filename}` };
 }
 
 function openBrowser(page) {

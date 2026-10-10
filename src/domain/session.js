@@ -1,3 +1,5 @@
+import { applyStoryCues, bookForSession } from "./scene.js";
+import { assertCastBelongs } from "./stages.js";
 import { clone, nowIso, requireText, uid } from "./util.js";
 
 export const SPEAK_MODES = {
@@ -7,18 +9,21 @@ export const SPEAK_MODES = {
 };
 
 export function sessionForm(session) {
+  if (session.npcIds.length === 0) return "empty";
   return session.npcIds.length > 1 ? "group" : "duo";
 }
 
 export function sessionFormLabel(session) {
+  if (session.npcIds.length === 0) return "还没开场";
   return sessionForm(session) === "group" ? "群聊" : "一对一";
 }
 
 export function getSession(library) {
   const session = library.sessions[0];
   if (!session) throw new Error("还没有会话。");
-  if (session.worldBookId !== library.worldBook.id) {
-    throw new Error("一场戏只能挂一本世界书。");
+  if (session.worldBookId) {
+    const book = library.worldBooks?.find((item) => item.id === session.worldBookId);
+    if (!book) throw new Error("这场戏挂着的世界书找不到了。");
   }
   return session;
 }
@@ -40,12 +45,11 @@ export function setPlayer(library, playerCardId) {
 
 export function setNpcIds(library, npcIds) {
   const next = clone(library);
-  const allowed = new Set(next.characters.filter((item) => item.kind === "npc").map((item) => item.id));
   const unique = [];
   for (const id of npcIds ?? []) {
-    if (!allowed.has(id)) throw new Error("会话里出现了不存在的角色。");
     if (!unique.includes(id)) unique.push(id);
   }
+  assertCastBelongs(next, unique);
   const session = getSession(next);
   session.npcIds = unique;
   session.turnCursor = 0;
@@ -54,18 +58,50 @@ export function setNpcIds(library, npcIds) {
 
 export function setLocation(library, locationId) {
   const next = clone(library);
-  const location = next.worldBook.locations.find((item) => item.id === locationId);
-  if (!location) throw new Error("世界书里没有这个地点。");
-  getSession(next).state.locationId = location.id;
+  const session = getSession(next);
+  const book = bookForSession(next, session);
+  if (!book) throw new Error("先选一个舞台。");
+  const location = book.locations.find((item) => item.id === locationId);
+  if (!location) throw new Error("这本世界书里没有这个地点。");
+  session.state.locationId = location.id;
+  session.state.activeTriggerId = "";
+  return next;
+}
+
+export function setTimeOfDay(library, timeOfDay) {
+  if (timeOfDay !== "day" && timeOfDay !== "night") throw new Error("只能切换白天或夜晚。");
+  const next = clone(library);
+  const session = getSession(next);
+  if (!session.worldBookId) throw new Error("先选一个舞台。");
+  session.state.timeOfDay = timeOfDay;
   return next;
 }
 
 export function sendPlayerLine(library, text) {
   const next = clone(library);
   const session = getSession(next);
+  if (!session.worldBookId) throw new Error("先选一个舞台，再开口。");
   const line = requireText(text, "先写一句，再送上台。");
   const player = next.characters.find((item) => item.id === session.playerCardId);
   session.messages.push(message(player?.id || "player", player?.name || "我", "player", line));
+
+  const book = bookForSession(next, session);
+  const cues = applyStoryCues(book, session, line);
+  if (cues.locationChanged) {
+    session.messages.push(message("system", "戏台", "system", `场景跟着这句话到了「${cues.locationName}」。`));
+  }
+  if (cues.triggerName) {
+    session.messages.push(
+      message(
+        "system",
+        "戏台",
+        "system",
+        cues.triggerStub
+          ? `特殊情景「${cues.triggerName}」被提到了。这张图还没放进来，先沿用当前地点的背景。`
+          : `特殊情景「${cues.triggerName}」换上了自己的图。`,
+      ),
+    );
+  }
 
   const npcs = session.npcIds
     .map((id) => next.characters.find((item) => item.id === id))

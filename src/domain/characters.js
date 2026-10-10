@@ -8,6 +8,7 @@ export function createCharacter(library, kind) {
   const character = {
     id: uid(kind === "player" ? "player" : "npc"),
     kind,
+    stageId: kind === "npc" ? library.activeStageId || "" : "",
     name: kind === "player" ? "未命名的我" : "未命名角色",
     summary: "",
     personality: "",

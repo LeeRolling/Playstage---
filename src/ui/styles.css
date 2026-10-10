@@ -197,18 +197,30 @@ button { cursor: pointer; }
   position: absolute;
   left: 70px;
   right: 70px;
-  bottom: calc(min(34vh, 290px) + 28px);
+  bottom: 0;
+  height: 100%;
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  gap: 28px;
+  gap: 18px;
   z-index: 1;
+  pointer-events: none;
+  padding: 0 12px 8px;
 }
 
-.sprite { width: 148px; text-align: center; }
+.sprite { width: min(180px, 22vw); text-align: center; }
+
+.sprite b {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 2px 8px;
+  background: rgba(8, 6, 8, 0.7);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
 
 .figure {
-  height: 270px;
+  height: min(62vh, 560px);
   border-radius: 90px 90px 16px 16px;
   background:
     radial-gradient(circle at 50% 46px, #f7f1e6 0 26px, transparent 27px),
@@ -224,31 +236,63 @@ button { cursor: pointer; }
   background: rgba(0, 0, 0, 0.2);
 }
 
-.sprite b {
-  display: inline-block;
-  margin-top: 8px;
-  padding: 2px 8px;
-  background: rgba(8, 6, 8, 0.7);
-  font-weight: 500;
-  letter-spacing: 0.08em;
-}
-
 .dialog {
   position: absolute;
   left: 28px;
   right: 28px;
   bottom: 18px;
   z-index: 3;
-  height: min(34vh, 290px);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  height: min(34vh, 300px);
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 12px;
   padding: 14px 16px 12px;
   border-radius: 18px;
-  background: var(--glass);
+  background: rgba(7, 6, 9, 0.52);
   border: 1px solid rgba(230, 201, 138, 0.32);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(10px);
+}
+
+.dialog-portrait {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dialog-portrait img,
+.portrait-fallback {
+  width: 92px;
+  height: 92px;
+  object-fit: cover;
+  object-position: center top;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(230, 201, 138, 0.35);
+}
+
+.portrait-fallback {
+  background:
+    radial-gradient(circle at 50% 28px, #f7f1e6 0 16px, transparent 17px),
+    linear-gradient(180deg, var(--accent) 0%, rgba(18, 14, 18, 0.2) 80%);
+}
+
+.dialog-portrait b {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  color: var(--gold);
+}
+
+.dialog-main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .lines {
@@ -480,8 +524,81 @@ a { color: var(--gold); }
   width: 72px;
   height: 96px;
   object-fit: cover;
+  object-position: center top;
   border-radius: 8px;
   background: #221c24;
+  flex: none;
+}
+
+.thumb.wide {
+  width: 120px;
+  height: 72px;
+}
+
+.model-status {
+  margin: 8px 0 0;
+  color: var(--gold);
+  line-height: 1.65;
+}
+
+.stage-modal { width: min(760px, 100%); }
+
+.stage-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.stage-card {
+  text-align: left;
+  border-radius: 16px;
+  border: 1px solid rgba(230, 201, 138, 0.35);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 12px 14px;
+}
+
+.stage-card span,
+.stage-card em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 13px;
+}
+
+.stage-card strong {
+  display: block;
+  margin: 2px 0 6px;
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+}
+
+.stage-card p {
+  margin: 0 0 6px;
+}
+
+.crop-frame {
+  position: relative;
+  margin: 12px auto;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #0b090c;
+  border: 1px solid rgba(230, 201, 138, 0.35);
+  touch-action: none;
+  cursor: grab;
+}
+
+.crop-image {
+  position: absolute;
+  max-width: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.row select,
+.row input[type="text"] {
+  width: auto;
+  flex: 1;
+  min-width: 160px;
 }
 
 .portrait-row { display: flex; gap: 10px; align-items: center; }
@@ -490,5 +607,12 @@ a { color: var(--gold); }
   .shell { grid-template-columns: 76px minmax(0, 1fr); }
   .side { display: none; }
   .curtain { display: none; }
-  .sprites { left: 12px; right: 12px; }
+  .sprites { left: 8px; right: 8px; }
+  .dialog {
+    left: 10px;
+    right: 10px;
+    grid-template-columns: 74px minmax(0, 1fr);
+  }
+  .dialog-portrait img,
+  .portrait-fallback { width: 64px; height: 64px; }
 }
