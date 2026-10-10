@@ -14,13 +14,15 @@ export function exportBundle(library, kind) {
   };
 
   if (kind === "world") {
-    body.worldBook = clone(library.worldBook);
+    body.worldBooks = clone(library.worldBooks);
+    body.activeWorldBookId = session.worldBookId || "";
   } else if (kind === "characters") {
     body.characters = clone(library.characters);
   } else if (kind === "story") {
     body.priorSummary = priorSummary;
     body.session = clone(session);
-    body.worldBook = clone(library.worldBook);
+    body.worldBooks = clone(library.worldBooks);
+    body.activeWorldBookId = session.worldBookId || "";
     body.characters = clone(library.characters);
   } else {
     throw new Error("只能导出世界书、人设卡或剧情包。");
@@ -79,5 +81,6 @@ function playerName(library, session) {
 }
 
 function locationName(library, session) {
-  return library.worldBook.locations.find((item) => item.id === session.state.locationId)?.name || "未知地点";
+  const book = library.worldBooks?.find((item) => item.id === session.worldBookId);
+  return book?.locations.find((item) => item.id === session.state.locationId)?.name || "尚未选舞台";
 }

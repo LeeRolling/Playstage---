@@ -40,6 +40,16 @@ export function adviseFromVram(vramMb) {
   };
 }
 
+export function describePrerequisites({ ollamaReachable }) {
+  return {
+    node: "你能看见这个页面，说明 Node.js 已经在跑。这一项不用再检查。",
+    ollama: ollamaReachable
+      ? "本机的 Ollama 有回应。到「模型」页可以再测一次。这一版即使连上，也不会用它来演戏。"
+      : "没有测到本机 Ollama。不着急，这不挡你先选舞台。想用本地模型时，再自己打开推理软件，到「模型」页测试。",
+    ollamaReachable: Boolean(ollamaReachable),
+  };
+}
+
 export function completeGuide(library, disclaimerAccepted) {
   if (!disclaimerAccepted) {
     throw new Error("请先勾选「我已阅读免责声明」，再结束引导。");

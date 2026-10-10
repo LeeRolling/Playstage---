@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createSeedLibrary } from "../domain/index.js";
+import { createSeedLibrary, migrateLibrary } from "../domain/index.js";
 
 export function openStore(dataDir) {
   const file = path.join(dataDir, "library.json");
@@ -8,14 +8,19 @@ export function openStore(dataDir) {
   function load() {
     if (!fs.existsSync(file)) {
       const seed = createSeedLibrary();
-      fs.mkdirSync(dataDir, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(seed, null, 2));
+      save(seed);
       return seed;
     }
     try {
-      return JSON.parse(fs.readFileSync(file, "utf8"));
-    } catch {
-      throw new Error("data/library.json 读不了。可以先把这个文件挪走，再重新启动，剧戏台会写出一份新的试演。");
+      const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+      const migrated = migrateLibrary(raw);
+      if (migrated !== raw) save(migrated);
+      return migrated;
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        throw new Error("data/library.json 读不了。可以先把这个文件挪走，再重新启动，剧戏台会写出一份新的试演。");
+      }
+      throw error;
     }
   }
 
