@@ -17,6 +17,7 @@ import {
 } from "./models.js";
 import { createSave, loadSave, removeSave } from "./saves.js";
 import { resolveScene } from "./scene.js";
+import { updateSettings } from "./settings.js";
 import {
   getSession,
   sendPlayerLine,
@@ -135,6 +136,8 @@ export function dispatch(library, action) {
       return plain(recordProbe(library, action));
     case "guide.complete":
       return plain(completeGuide(library, action.disclaimerAccepted), "引导完成。模型仍要你自己准备。");
+    case "settings.update":
+      return plain(updateSettings(library, action), settingsMessage(action));
     default:
       throw new Error("不认识这个操作。");
   }
@@ -142,4 +145,12 @@ export function dispatch(library, action) {
 
 function plain(library, message) {
   return { library, message: message || "" };
+}
+
+function settingsMessage(action) {
+  const sprite = action.spriteScale != null && action.spriteScale !== "";
+  const dialog = action.dialogScale != null && action.dialogScale !== "";
+  if (sprite && !dialog) return "立绘大小已留在这台电脑上。";
+  if (dialog && !sprite) return "对话框高度已留在这台电脑上。";
+  return "台上的大小已留在这台电脑上。";
 }

@@ -13,6 +13,18 @@ const views = [
 
 const accents = ["#e6c98a", "#e7b3a1", "#b7c7e6", "#d5c4a1", "#c9d6b8", "#e6d0b0"];
 
+const SPRITE_PRESETS = [
+  { id: "small", label: "小", scale: 0.68 },
+  { id: "medium", label: "中", scale: 0.84 },
+  { id: "large", label: "大", scale: 1 },
+];
+
+const DIALOG_PRESETS = [
+  { id: "short", label: "矮", scale: 1 },
+  { id: "medium", label: "中", scale: 1.4 },
+  { id: "tall", label: "高", scale: 1.85 },
+];
+
 let library = null;
 let hardware = null;
 let prerequisites = null;
@@ -59,6 +71,8 @@ function render() {
   const ledgerScroll = keepScroll ? app.querySelector(".ledger")?.scrollTop || 0 : 0;
   const sideScroll = keepScroll ? app.querySelector(".side")?.scrollTop || 0 : 0;
   const windowScroll = keepScroll ? window.scrollY : 0;
+  const spritePreset = presetOf(SPRITE_PRESETS, library.settings?.spriteScale, "large");
+  const dialogPreset = presetOf(DIALOG_PRESETS, library.settings?.dialogScale, "short");
   app.innerHTML = `
     <div class="shell">
       <header class="topbar">
@@ -82,8 +96,8 @@ function render() {
           )
           .join("")}
       </nav>
-      <main class="stage${sceneOk ? " has-scene" : ""}" id="stage" ${sceneOk ? `style="background-image:linear-gradient(rgba(12,8,10,0.28), rgba(12,8,10,0.5)), url('${esc(sceneUrl)}')"` : ""}>
-        ${sceneOk ? "" : `<div class="curtain left"></div><div class="curtain right"></div>`}
+      <main class="stage${sceneOk ? " has-scene" : ""}" id="stage" style="--sprite-scale:${spritePreset.scale};--dialog-scale:${dialogPreset.scale}">
+        ${sceneOk ? `<div class="stage-bg" style="background-image:url('${esc(sceneUrl)}')"></div>` : `<div class="curtain left"></div><div class="curtain right"></div>`}
         ${view === "stage" ? stageHtml(session, scene, sceneUrl) : ledgerHtml()}
       </main>
       <aside class="side">${sideHtml(session)}</aside>
@@ -120,6 +134,7 @@ function stageHtml(session, scene, sceneUrl) {
   const speaker = currentSpeaker(session);
   return `
     <div class="plaque"><span>${esc(scene.stageName || "选择舞台")}</span><strong>${esc(scene.locationName)}</strong></div>
+    <div class="stage-scale">${scaleControlsHtml()}</div>
     ${ribbonHtml(scene, missingFile)}
     <div class="sprites">
       ${cast
@@ -587,6 +602,7 @@ function sideHtml(session) {
            </div>`
         : `<button class="primary" type="button" data-open-picker>选一座舞台</button>`
     }
+    ${scaleControlsHtml()}
     <h2 style="margin-top:18px">发言</h2>
     <div class="stack">
       ${["turn", "interrupt", "direct"]
@@ -609,6 +625,34 @@ function sideHtml(session) {
     }
     <p>缺图也可以继续。立绘和背景都留在你自己的电脑上。</p>
   `;
+}
+
+function scaleControlsHtml() {
+  const sprite = presetOf(SPRITE_PRESETS, library.settings?.spriteScale, "large");
+  const dialog = presetOf(DIALOG_PRESETS, library.settings?.dialogScale, "short");
+  return `
+    <div class="scale-block">
+    <h2>立绘大小</h2>
+    <div class="preset-row" role="group" aria-label="立绘大小">
+      ${SPRITE_PRESETS.map(
+        (item) =>
+          `<button type="button" class="mode" data-set-sprite="${item.id}" aria-pressed="${item.id === sprite.id}">${item.label}</button>`,
+      ).join("")}
+    </div>
+    <h2>对话框高度</h2>
+    <div class="preset-row" role="group" aria-label="对话框高度">
+      ${DIALOG_PRESETS.map(
+        (item) =>
+          `<button type="button" class="mode" data-set-dialog="${item.id}" aria-pressed="${item.id === dialog.id}">${item.label}</button>`,
+      ).join("")}
+    </div>
+    <p class="help">点一下就换。这个选择会留在这台电脑上，关掉再打开还在。</p>
+    </div>
+  `;
+}
+
+function presetOf(list, id, fallback) {
+  return list.find((item) => item.id === id) || list.find((item) => item.id === fallback);
 }
 
 function stagePickerHtml() {
@@ -804,6 +848,18 @@ function bind() {
   });
   app.querySelectorAll("[data-mode]").forEach((button) => {
     button.addEventListener("click", () => act({ type: "session.setMode", mode: button.dataset.mode }));
+  });
+  app.querySelectorAll("[data-set-sprite]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.getAttribute("aria-pressed") === "true") return;
+      act({ type: "settings.update", spriteScale: button.dataset.setSprite });
+    });
+  });
+  app.querySelectorAll("[data-set-dialog]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.getAttribute("aria-pressed") === "true") return;
+      act({ type: "settings.update", dialogScale: button.dataset.setDialog });
+    });
   });
   app.querySelectorAll("[data-time]").forEach((button) => {
     button.addEventListener("click", () => act({ type: "session.setTime", timeOfDay: button.dataset.time }));

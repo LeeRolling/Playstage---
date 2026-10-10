@@ -296,6 +296,66 @@ test("旧的单本世界书会迁到三座舞台，并留下引导和钥匙", ()
   assert.equal(next.model.localModel, "demo-local");
 });
 
+test("立绘大小默认是大，对话框默认是矮，并且会留下来", () => {
+  const seeded = createSeedLibrary();
+  assert.equal(seeded.settings.spriteScale, "large");
+  assert.equal(seeded.settings.dialogScale, "short");
+
+  const smaller = dispatch(seeded, { type: "settings.update", spriteScale: "small" });
+  assert.equal(smaller.library.settings.spriteScale, "small");
+  assert.equal(smaller.library.settings.dialogScale, "short");
+  assert.match(smaller.message, /立绘大小已留在这台电脑上/);
+
+  const taller = dispatch(smaller.library, { type: "settings.update", dialogScale: "tall" });
+  assert.equal(taller.library.settings.dialogScale, "tall");
+  assert.equal(taller.library.settings.spriteScale, "small");
+
+  assert.throws(() => dispatch(seeded, { type: "settings.update", spriteScale: "huge" }), /小、中或大/);
+  assert.throws(() => dispatch(seeded, { type: "settings.update", dialogScale: "giant" }), /矮、中或高/);
+
+  const started = dispatch(taller.library, { type: "stage.select", stageId: "stage-frost" }).library;
+  const saved = dispatch(started, { type: "save.create", name: "大小之前" }).library;
+  const changed = dispatch(saved, { type: "settings.update", spriteScale: "medium" }).library;
+  const loaded = dispatch(changed, { type: "save.load", saveId: changed.saves[0].id }).library;
+  assert.equal(loaded.settings.spriteScale, "medium");
+  assert.equal(loaded.settings.dialogScale, "tall");
+
+  const restarted = dispatch(loaded, { type: "run.start", stageId: "stage-azure" }).library;
+  assert.equal(restarted.settings.spriteScale, "medium");
+  assert.equal(restarted.settings.dialogScale, "tall");
+});
+
+test("旧资料库补上显示偏好，不冲掉已经写好的舞台", () => {
+  const kept = {
+    revision: 2,
+    stagePicked: true,
+    activeStageId: "stage-frost",
+    stages: [{ id: "stage-frost", name: "霜印王国" }],
+    worldBooks: [{ id: "book-frost", name: "保留这本书" }],
+  };
+  const filled = migrateLibrary(kept);
+  assert.notEqual(filled, kept);
+  assert.equal(filled.worldBooks[0].name, "保留这本书");
+  assert.equal(filled.stagePicked, true);
+  assert.equal(filled.settings.spriteScale, "large");
+  assert.equal(filled.settings.dialogScale, "short");
+
+  const chosen = {
+    ...kept,
+    settings: { spriteScale: "medium", dialogScale: "tall", note: "留着" },
+  };
+  const same = migrateLibrary(chosen);
+  assert.equal(same, chosen);
+  assert.equal(same.settings.spriteScale, "medium");
+  assert.equal(same.settings.dialogScale, "tall");
+  assert.equal(same.settings.note, "留着");
+
+  const broken = migrateLibrary({ ...kept, settings: { spriteScale: "nope" } });
+  assert.equal(broken.settings.spriteScale, "large");
+  assert.equal(broken.settings.dialogScale, "short");
+  assert.equal(broken.worldBooks[0].name, "保留这本书");
+});
+
 test("种子文件与开局数据一致", () => {
   const disk = JSON.parse(fs.readFileSync(new URL("../../data/library.seed.json", import.meta.url), "utf8"));
   assert.deepEqual(disk, createSeedLibrary());

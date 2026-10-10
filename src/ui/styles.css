@@ -118,9 +118,22 @@ button { cursor: pointer; }
   position: relative;
   min-height: 0;
   overflow: hidden;
+  --sprite-scale: 1;
+  --dialog-scale: 1;
   background:
     radial-gradient(ellipse at 50% 18%, rgba(230, 201, 138, 0.08), transparent 36%),
     linear-gradient(180deg, #17131c 0%, #241c28 46%, #3a2c2a 78%, #140f12 100%);
+}
+
+/* 场景图单独一层，保持原图亮度。说话时的 brightness 只加在 .sprite 上。 */
+.stage-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
 }
 
 .curtain {
@@ -209,9 +222,9 @@ button { cursor: pointer; }
 }
 
 .sprite {
-  flex: 1 1 220px;
+  flex: 1 1 calc(220px * var(--sprite-scale));
   width: auto;
-  max-width: 460px;
+  max-width: calc(460px * var(--sprite-scale));
   min-width: 0;
   text-align: center;
   filter: brightness(1);
@@ -224,7 +237,7 @@ button { cursor: pointer; }
 
 .figure {
   position: relative;
-  height: min(78vh, 920px);
+  height: min(calc(78vh * var(--sprite-scale)), calc(920px * var(--sprite-scale)));
   border-radius: 160px 160px 18px 18px;
   background:
     radial-gradient(circle at 50% 86px, #f7f1e6 0 42px, transparent 43px),
@@ -254,8 +267,9 @@ button { cursor: pointer; }
   right: 28px;
   bottom: 12px;
   z-index: 3;
-  height: min(22vh, 188px);
-  min-height: 148px;
+  height: min(calc(22vh * var(--dialog-scale)), calc(188px * var(--dialog-scale)));
+  min-height: calc(148px * var(--dialog-scale));
+  max-height: 58vh;
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
   gap: 10px;
@@ -407,6 +421,22 @@ button { cursor: pointer; }
   border-color: rgba(230, 201, 138, 0.7);
   color: var(--gold);
 }
+
+.preset-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.preset-row .mode {
+  text-align: center;
+  padding: 8px 0;
+}
+
+.scale-block > h2:first-child { margin-top: 18px; }
+.preset-row + h2 { margin-top: 16px; }
+
+.stage-scale { display: none; }
 
 .person {
   display: flex;
@@ -673,12 +703,26 @@ a { color: var(--gold); }
   .side { display: none; }
   .curtain { display: none; }
   .sprites { left: 8px; right: 8px; padding-top: 56px; }
-  .sprite { max-width: 46vw; }
-  .figure { height: min(70vh, 760px); }
+  .sprite { max-width: calc(46vw * var(--sprite-scale)); }
+  .figure { height: min(calc(70vh * var(--sprite-scale)), calc(760px * var(--sprite-scale))); }
+  .stage-scale {
+    display: block;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 4;
+    width: min(210px, calc(100% - 20px));
+    padding: 8px 10px 10px;
+    border-radius: 12px;
+    background: rgba(12, 9, 12, 0.78);
+    border: 1px solid rgba(230, 201, 138, 0.35);
+  }
+  .stage-scale h2 { margin: 8px 0 6px; font-size: 15px; }
+  .stage-scale .scale-block > h2:first-child { margin-top: 0; }
   .dialog {
     left: 10px;
     right: 10px;
-    height: min(26vh, 188px);
+    height: min(calc(26vh * var(--dialog-scale)), calc(188px * var(--dialog-scale)));
     grid-template-columns: 68px minmax(0, 1fr);
   }
   .dialog-portrait img,
