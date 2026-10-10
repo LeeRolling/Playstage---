@@ -22,6 +22,7 @@ import { completeChat, probeBackend } from "./chat.js";
 import { readHardware } from "./hardware.js";
 import { replyToPlayer } from "./reply.js";
 import { openStore } from "./store.js";
+import { checkAndApplyUpdate, takeUpdateNote } from "./update.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const uiDir = path.join(root, "src/ui");
@@ -50,6 +51,7 @@ const types = {
 };
 
 let replying = false;
+const updateNotice = takeUpdateNote(root) || { message: "", tone: "ok" };
 
 const server = http.createServer(async (request, response) => {
   try {
@@ -62,6 +64,7 @@ const server = http.createServer(async (request, response) => {
         hardware,
         prerequisites: describePrerequisites({ ollamaReachable }),
         dataFile: store.file,
+        update: updateNotice.message ? { message: updateNotice.message, tone: updateNotice.tone } : null,
       });
     }
     if (url.pathname === "/api/act" && request.method === "POST") {
@@ -135,7 +138,36 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, host, () => {
+boot().catch((error) => {
+  console.error("剧戏台没有启动成功。", error instanceof Error ? error.message : error);
+  process.exit(1);
+});
+
+async function boot() {
+  if (process.env.PLAYSTAGE_UPDATE_ATTEMPT !== "1") {
+    const result = await checkAndApplyUpdate({ root });
+    if (result.action === "restart") {
+      console.log("");
+      console.log(result.message);
+      console.log("");
+      const child = spawn(process.execPath, process.argv.slice(1), {
+        cwd: root,
+        stdio: "inherit",
+        env: { ...process.env, PLAYSTAGE_UPDATE_ATTEMPT: "1" },
+      });
+      child.on("exit", (code) => process.exit(code ?? 0));
+      return;
+    }
+    if (result.message) {
+      updateNotice.message = result.message;
+      updateNotice.tone = result.tone === "bad" ? "bad" : "ok";
+      console.log(result.message);
+    }
+  }
+  await new Promise((resolve, reject) => {
+    server.listen(port, host, () => resolve());
+    server.once("error", reject);
+  });
   const page = `http://${host}:${port}`;
   console.log("");
   console.log("剧戏台已在这台电脑上打开。");
@@ -143,7 +175,7 @@ server.listen(port, host, () => {
   console.log("关掉这个窗口，剧戏台就会停止。");
   console.log("");
   openBrowser(page);
-});
+}
 
 server.on("error", (error) => {
   if (error.code === "EADDRINUSE") {

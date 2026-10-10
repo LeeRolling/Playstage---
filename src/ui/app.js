@@ -51,6 +51,9 @@ async function boot() {
     prerequisites = data.prerequisites;
     dataFile = data.dataFile || "";
     guideOpen = !library.guide.completed;
+    if (data.update?.message) {
+      notice = { tone: data.update.tone === "bad" ? "bad" : "ok", text: data.update.message };
+    }
     render();
   } catch {
     app.textContent = "剧戏台没有打开。请确认黑色启动窗口还在，然后刷新这个页面。";
