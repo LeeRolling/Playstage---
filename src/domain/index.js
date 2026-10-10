@@ -165,7 +165,7 @@ export function dispatch(library, action) {
     case "transfer.import":
       return noteImport(library, action);
     case "model.update":
-      return plain(updateModel(library, action), "模型设置已写在本机。剧戏台仍不附带模型。");
+      return plain(updateModel(library, action), modelSavedMessage(action));
     case "model.updateSlot":
       return plain(updateCloudSlot(library, action), "云端接口已记下。上台时用的是你在上面选中的那一家。");
     case "model.recordProbe":
@@ -181,6 +181,16 @@ export function dispatch(library, action) {
 
 function plain(library, message) {
   return { library: ensureCurrentLocation(library), message: message || "" };
+}
+
+function modelSavedMessage(action) {
+  if (action?.provider === "local") {
+    return "本地模型已经加载到《剧戏台》中，《剧戏台》仍不会自带任何AI模型。";
+  }
+  if (action?.provider === "zhipu" || action?.provider === "qwen" || action?.provider === "cloud") {
+    return "云端设置已经写在这台电脑上。《剧戏台》仍不会自带任何AI模型。";
+  }
+  return "模型设置已写在这台电脑上。《剧戏台》仍不会自带任何AI模型。";
 }
 
 function settingsMessage(action) {

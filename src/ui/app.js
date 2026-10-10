@@ -1,3 +1,5 @@
+import { preferredImageMime } from "./crop-mime.js";
+
 const app = document.querySelector("#app");
 
 const views = [
@@ -67,8 +69,9 @@ function render() {
   const session = library.sessions[0];
   const scene = library.view.scene;
   const sceneUrl = mediaUrl(scene.imageFile);
-  const sceneOk = Boolean(sceneUrl) && sceneCache.get(sceneUrl) === "ok" && view === "stage";
-  rememberScene(sceneUrl);
+  const sceneState = sceneUrl ? sceneCache.get(sceneUrl) : "";
+  const sceneOk = sceneState === "ok" && view === "stage";
+  const sceneMissing = sceneState === "missing";
   const keepScroll = paintedView === view;
   const ledgerScroll = keepScroll ? app.querySelector(".ledger")?.scrollTop || 0 : 0;
   const sideScroll = keepScroll ? app.querySelector(".side")?.scrollTop || 0 : 0;
@@ -99,8 +102,8 @@ function render() {
           .join("")}
       </nav>
       <main class="stage${sceneOk ? " has-scene" : ""}" id="stage" style="--dialog-scale:${dialogPreset.scale}">
-        ${sceneOk ? `<div class="stage-bg" style="background-image:url('${esc(sceneUrl)}')"></div>` : `<div class="curtain left"></div><div class="curtain right"></div>`}
-        ${view === "stage" ? stageHtml(session, scene, sceneUrl) : ledgerHtml()}
+        ${view === "stage" ? sceneBackgroundHtml(sceneUrl, sceneOk, sceneMissing) : `<div class="curtain left"></div><div class="curtain right"></div>`}
+        ${view === "stage" ? stageHtml(session, scene, sceneUrl, sceneMissing) : ledgerHtml()}
       </main>
       <aside class="side">${sideHtml(session)}</aside>
     </div>
@@ -139,8 +142,17 @@ function render() {
   armToast();
 }
 
-function stageHtml(session, scene, sceneUrl) {
-  const missingFile = scene.backgroundSet && sceneUrl && sceneCache.get(sceneUrl) === "missing";
+function sceneBackgroundHtml(sceneUrl, sceneOk, sceneMissing) {
+  const image =
+    sceneUrl && !sceneMissing
+      ? `<img class="stage-bg${sceneOk ? "" : " is-pending"}" alt="" src="${esc(sceneUrl)}" />`
+      : "";
+  const curtains = sceneOk ? "" : `<div class="curtain left"></div><div class="curtain right"></div>`;
+  return `${image}${curtains}`;
+}
+
+function stageHtml(session, scene, sceneUrl, sceneMissing) {
+  const missingFile = scene.backgroundSet && sceneUrl && sceneMissing;
   const cast = castOf(session);
   const speaker = currentSpeaker(session);
   return `
@@ -358,7 +370,7 @@ function cardsHtml() {
   const players = library.characters.filter((item) => item.kind === "player");
   return `
     <h2>人设卡</h2>
-    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像和全身图都可以裁一下再留下。左右、上下和放大记在这张卡上，每一场都用这一套。</p>
+    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像和全身图都可以裁一下再留下。新裁的头像和全身图会存成 PNG，下面的路径会换成新文件，透明底会留下来。原来的图还在文件夹里，不会被删掉。左右、上下和放大记在这张卡上，每一场都用这一套。</p>
     <div class="row">
       <button class="primary" type="button" data-new="player">新的玩家人设</button>
       <button class="ghost" type="button" data-new="npc">新的角色（记在当前舞台）</button>
@@ -524,7 +536,7 @@ function modelHtml() {
         <label class="check"><input type="radio" name="provider" value="local" ${model.provider === "local" ? "checked" : ""} /> 用这台电脑演戏</label>
         <label>本机地址</label>
         <input name="localBaseUrl" type="url" value="${esc(model.localBaseUrl)}" />
-        <p class="help">Ollama 打开后，地址一般是 http://127.0.0.1:11434 。写成 http://127.0.0.1:11434/v1 也可以。先点「读取本机模型」，再在下面选中你装好的那个。</p>
+        <p class="help">Ollama 打开后，地址一般是 http://127.0.0.1:11434 。写成 http://127.0.0.1:11434/v1 也可以。先点「读取本机模型」，再在下面选中你装好的那个。本地模型加载速度会与硬件直接关联。</p>
         <label>读取到的模型</label>
         <select id="local-model-pick">
           <option value="">${known.length ? "从列表里选" : "还没有列表。先读取本机模型"}</option>
@@ -560,6 +572,7 @@ function modelHtml() {
       <div class="block">
         <h3>另一家云端（可选）</h3>
         <label class="check"><input type="radio" name="provider" value="cloud" ${model.provider === "cloud" ? "checked" : ""} /> 用这一家演戏</label>
+        <p class="help">DeepSeek 也填在这里。地址常见是 https://api.deepseek.com ，模型名按你账号里的来，例如 deepseek-chat 或 DeepSeek-Flash。先保存，再上台。</p>
         <label>地址</label>
         <input name="cloudBaseUrl" type="url" value="${esc(model.cloudBaseUrl)}" placeholder="OpenAI 兼容地址，以 /v1 结尾常见" />
         <label>模型名</label>
@@ -945,8 +958,10 @@ function armToast() {
 }
 
 function bind() {
+  bindSceneImage();
   app.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
+      if (button.dataset.view === "stage") forgetMissingScenes();
       view = button.dataset.view;
       location.hash = view;
       notice = null;
@@ -1062,9 +1077,16 @@ function bind() {
     if (!text) return;
     composerDraft = "";
     sending = true;
-    notice = { tone: "ok", text: "正在请台上的人接话…" };
+    const localModel = library?.model?.provider === "local";
+    notice = { tone: "ok", text: waitingNotice(localModel, false) };
     render();
+    const waitTimer = setTimeout(() => {
+      if (!sending) return;
+      notice = { tone: "ok", text: waitingNotice(localModel, true) };
+      render();
+    }, localModel ? 20000 : 12000);
     const ok = await act({ type: "session.send", text }, { render: false });
+    clearTimeout(waitTimer);
     sending = false;
     if (!ok) composerDraft = text;
     render();
@@ -1126,6 +1148,7 @@ function bind() {
         file,
         aspect,
         title,
+        mime: preferredImageMime(file.type, kind),
         onDone: async (savedPath) => {
           if (kind === "avatar" || kind === "full") {
             const fields = kind === "avatar" ? { avatarFile: savedPath } : { fullBodyFile: savedPath };
@@ -1358,7 +1381,14 @@ async function testSlot(slotId) {
   render();
 }
 
-function openCropper({ file, aspect, title, onDone }) {
+function waitingNotice(local, late) {
+  if (local && !late) return "本机模型正在接话。第一次加载会慢一些，和这台电脑的硬件有关，请稍等。";
+  if (local && late) return "还在等本机模型。第一次把模型读进显卡会更久，请再稍等一会儿。";
+  if (!late) return "正在请云端接话…";
+  return "云端还没说完。快模型一般不用等这么久，可以再等一会儿。";
+}
+
+function openCropper({ file, aspect, title, mime, onDone }) {
   const overlay = document.createElement("div");
   overlay.className = "modal-back";
   overlay.innerHTML = `
@@ -1444,7 +1474,11 @@ function openCropper({ file, aspect, title, onDone }) {
       canvas.width,
       canvas.height,
     );
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+    const output = mime || "image/jpeg";
+    let blob = await new Promise((resolve) => canvas.toBlob(resolve, output, output === "image/jpeg" ? 0.9 : undefined));
+    if (!blob && output !== "image/jpeg") {
+      blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+    }
     close();
     if (!blob) {
       notice = { tone: "bad", text: "这张图没有裁下来。" };
@@ -1550,17 +1584,34 @@ function pictureOfLocation(place, slot) {
   return previews.get(key) || mediaUrl(slot === "night" ? place.nightImageFile : place.imageFile);
 }
 
-function rememberScene(sceneUrl) {
-  if (!sceneUrl || sceneCache.has(sceneUrl)) return;
-  sceneCache.set(sceneUrl, "pending");
-  const probe = new Image();
-  const finish = (status) => {
-    sceneCache.set(sceneUrl, status);
+function forgetMissingScenes() {
+  for (const [key, value] of sceneCache) {
+    if (value === "missing") sceneCache.delete(key);
+  }
+}
+
+function bindSceneImage() {
+  const img = app.querySelector("img.stage-bg");
+  if (!img) return;
+  const url = img.getAttribute("src") || "";
+  const ready = () => {
+    sceneCache.set(url, "ok");
+    img.classList.remove("is-pending");
+    app.querySelector(".stage")?.classList.add("has-scene");
+    app.querySelectorAll(".curtain").forEach((node) => node.remove());
+  };
+  const missing = () => {
+    if (sceneCache.get(url) === "missing") return;
+    sceneCache.set(url, "missing");
     if (view === "stage") queueMicrotask(() => render());
   };
-  probe.onload = () => finish("ok");
-  probe.onerror = () => finish("missing");
-  probe.src = sceneUrl;
+  if (img.complete) {
+    if (img.naturalWidth > 0) ready();
+    else missing();
+  } else {
+    img.addEventListener("load", ready);
+    img.addEventListener("error", missing);
+  }
 }
 
 function mediaUrl(file) {

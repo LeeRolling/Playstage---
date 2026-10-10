@@ -19,6 +19,7 @@ import {
   updateModel,
 } from "../domain/index.js";
 import { completeChat, probeBackend } from "./chat.js";
+import { resolveStoredPicture, retargetLibraryPictures } from "./pictures.js";
 import { readHardware } from "./hardware.js";
 import { replyToPlayer } from "./reply.js";
 import { openStore } from "./store.js";
@@ -32,6 +33,11 @@ const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "127.0.0.1";
 const store = openStore(path.join(root, "data"));
 let library = store.load();
+const pictured = retargetLibraryPictures(library, root);
+if (pictured.changed) {
+  library = pictured.library;
+  store.save(library);
+}
 const armed = armModelRetest(library);
 if (armed !== library) {
   library = armed;
@@ -125,10 +131,16 @@ const server = http.createServer(async (request, response) => {
       return send(response, 200, { ok: true });
     }
     if (request.method === "GET" && url.pathname.startsWith("/assets/")) {
-      return sendRootFile(response, assetsDir, decodeURIComponent(url.pathname.slice("/assets/".length)));
+      const requested = decodePath(url.pathname.slice("/assets/".length));
+      const found = resolveStoredPicture(root, `assets/${requested}`);
+      if (found) return sendRootFile(response, root, found);
+      return sendRootFile(response, assetsDir, requested);
     }
     if (request.method === "GET" && url.pathname.startsWith("/media/")) {
-      return sendRootFile(response, mediaDir, decodeURIComponent(url.pathname.slice("/media/".length)));
+      const requested = decodePath(url.pathname.slice("/media/".length));
+      const found = resolveStoredPicture(root, `data/media/${requested}`);
+      if (found) return sendRootFile(response, root, found);
+      return sendRootFile(response, mediaDir, requested);
     }
     if (request.method === "GET") return sendFile(response, url.pathname);
     return send(response, 404, { message: "没有这个地址。" });
@@ -195,6 +207,14 @@ function send(response, status, body) {
   response.end(raw);
 }
 
+function decodePath(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function sendFile(response, pathname) {
   const requested = pathname === "/" ? "index.html" : decodeURIComponent(pathname.replace(/^\/+/, ""));
   sendRootFile(response, uiDir, requested);
@@ -208,7 +228,10 @@ function sendRootFile(response, baseDir, requested) {
     return;
   }
   if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
-    response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+    response.writeHead(404, {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+    });
     response.end("找不到这个文件。");
     return;
   }
