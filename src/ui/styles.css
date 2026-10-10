@@ -88,7 +88,9 @@
 
 html, body {
   margin: 0;
-  min-height: 100%;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--bg);
   color: var(--paper);
   font-family: var(--sans);
@@ -101,10 +103,17 @@ button, input, textarea, select {
 
 button { cursor: pointer; }
 
-#app { min-height: 100vh; }
+#app {
+  height: 100%;
+  overflow: hidden;
+}
 
+/* 整页锁在窗口里。台词、侧栏、账本在自己的区域里滚，文档不再出现滚动条。 */
 .shell {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr) 272px;
   grid-template-rows: auto minmax(0, 1fr);
@@ -154,6 +163,8 @@ button { cursor: pointer; }
 }
 
 .rail {
+  min-height: 0;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -284,13 +295,19 @@ button { cursor: pointer; }
   z-index: 1;
   pointer-events: none;
   padding: 64px 4px 0;
+  overflow: hidden;
 }
 
 .sprite {
   flex: 1 1 calc(220px * var(--sprite-scale));
   width: auto;
   max-width: calc(460px * var(--sprite-scale));
+  height: 100%;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
   text-align: center;
   filter: brightness(1);
   transition: filter 180ms ease;
@@ -302,7 +319,9 @@ button { cursor: pointer; }
 
 .figure {
   position: relative;
+  width: 100%;
   height: min(calc(78vh * var(--sprite-scale)), calc(920px * var(--sprite-scale)));
+  max-height: 100%;
   border-radius: 160px 160px 18px 18px;
   background:
     radial-gradient(circle at 50% 86px, #f7f1e6 0 42px, transparent 43px),
@@ -332,11 +351,13 @@ button { cursor: pointer; }
   right: 28px;
   bottom: 12px;
   z-index: 3;
-  height: min(calc(22vh * var(--dialog-scale)), calc(188px * var(--dialog-scale)));
-  min-height: calc(148px * var(--dialog-scale));
-  max-height: 58vh;
+  height: min(calc(22vh * var(--dialog-scale)), calc(188px * var(--dialog-scale)), calc(100% - 24px));
+  min-height: min(calc(148px * var(--dialog-scale)), calc(100% - 24px));
+  max-height: min(58vh, calc(100% - 24px));
+  overflow: hidden;
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 10px;
   padding: 10px 14px 8px;
   border-radius: var(--radius-dialog);
@@ -354,6 +375,7 @@ button { cursor: pointer; }
   align-items: center;
   gap: 6px;
   min-width: 0;
+  min-height: 0;
 }
 
 .dialog-portrait img,
@@ -401,6 +423,7 @@ button { cursor: pointer; }
 }
 
 .lines {
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   display: flex;
@@ -424,6 +447,7 @@ button { cursor: pointer; }
 .line.system p { color: var(--dialog-muted); font-size: 14px; }
 
 .composer {
+  flex-shrink: 0;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
@@ -474,6 +498,7 @@ button { cursor: pointer; }
 }
 
 .side {
+  min-height: 0;
   border-left: var(--frame) solid var(--line);
   background: var(--side);
   padding: 18px 16px;
@@ -806,7 +831,7 @@ a { color: var(--gold); }
   .curtain { display: none; }
   .sprites { left: 8px; right: 8px; padding-top: 56px; }
   .sprite { max-width: calc(46vw * var(--sprite-scale)); }
-  .figure { height: min(calc(70vh * var(--sprite-scale)), calc(760px * var(--sprite-scale))); }
+  .figure { height: min(calc(70vh * var(--sprite-scale)), calc(760px * var(--sprite-scale)), 100%); }
   .stage-scale {
     display: block;
     position: absolute;
@@ -825,7 +850,9 @@ a { color: var(--gold); }
   .dialog {
     left: 10px;
     right: 10px;
-    height: min(calc(26vh * var(--dialog-scale)), calc(188px * var(--dialog-scale)));
+    height: min(calc(26vh * var(--dialog-scale)), calc(188px * var(--dialog-scale)), calc(100% - 20px));
+    min-height: min(calc(148px * var(--dialog-scale)), calc(100% - 20px));
+    max-height: min(58vh, calc(100% - 20px));
     grid-template-columns: 68px minmax(0, 1fr);
   }
   .dialog-portrait img,
