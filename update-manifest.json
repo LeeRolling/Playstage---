@@ -1,5 +1,5 @@
 {
-  "version": "0.3.0",
+  "version": "0.3.1",
   "repo": "LeeRolling/Playstage---",
   "ref": "main",
   "algorithm": "sha256",
@@ -10,13 +10,13 @@
   "files": {
     ".gitignore": "26254513d62bf0bcd75082b22fea2789613eebd9ebdfe7b66eb740efd15b7190",
     "README.md": "0c1f930f4de6a5a3fd9d70c4349c3818ae989c241e8cb1f7bb7aa927d08d4ed9",
-    "VERSION": "d915cc95d6ca8f47ae297713ed46d4e5c5d99ddd29fc3c61e263bdf305f2b5b0",
+    "VERSION": "79e3f22ca37c7fdf4c29ae3648d6b008c3cb6547260a453409275470919dc674",
     "assets/defaults/README.md": "af711cfc6d4668673dbe5a4a1791347f51589cfa38c32363ef79102746831786",
     "docs/PRD.md": "23c3c9df8f1b790a273ea70345abb4c03bc80ed9a34a4788e67a8bb93d8abf55",
     "docs/内测更新.md": "bbd757945bf429648b4c0ee86d1137f99ac6bc64bc59a24e178d6d0ecaca9159",
     "docs/皮肤制作-给AI.md": "03bec058d440d25fbde8f09a40d91972fb79535f8e5963eb769b49df3331ac7f",
     "docs/自定义皮肤.md": "fd4e2d702decf232bff5aa9804a8a3c5fc9b8612912d92880adbd5fb451c715e",
-    "package.json": "94f17289a7e7dbb7bef79bb40d80a23d61b60a835f179cd9d86c77fc82f6ddf0",
+    "package.json": "9a38353fa8d9d7f265603526a0a36be56af4ac17bdfdbc7f8e1e96dce5d2e979",
     "scripts/check-boundaries.js": "eaae54279a6e507e03850f16677b6d333cc8e99102444525379b6a49cfa3d45c",
     "scripts/write-update-manifest.js": "5ed10e493fb5c1a12e1827305594e9c633b6200577664258f542afbd90117b5b",
     "src/domain/acting.js": "92cf429a2f23e2eebecd2cd74b98f053b915ce37726544386b1b4849b616a963",
@@ -47,7 +47,7 @@
     "src/ui/app.js": "080d06ed1b02df40d7f57416ae4387d1ccd7e09c160a9c52320843cef478211c",
     "src/ui/index.html": "637d2d2ebf4ad666c1708d237805bdbfead669a0808fe0c1bbcce9a96a3ef639",
     "src/ui/styles.css": "cd501cc30fa5131b8ff34a2324c4192a9bb0315d3cb53215cf7d978c38b3e48e",
-    "start.bat": "e60c3028ca3207255e74238e5ce482f90c6e3d47314b64aec571e67fef8983ad",
+    "start.bat": "05d85ef0966bc5fe48fb57d4e11a97c9d94e6c08a55de7703d943b1beeb154e4",
     "start.sh": "6799f4c943bf521042a3ed06aa3d00a33f7d4d83c1b5afb4abb195605952403b"
   }
 }
