@@ -13,12 +13,6 @@ const views = [
 
 const accents = ["#e6c98a", "#e7b3a1", "#b7c7e6", "#d5c4a1", "#c9d6b8", "#e6d0b0"];
 
-const SPRITE_PRESETS = [
-  { id: "small", label: "小", scale: 0.68 },
-  { id: "medium", label: "中", scale: 0.84 },
-  { id: "large", label: "大", scale: 1 },
-];
-
 const DIALOG_PRESETS = [
   { id: "short", label: "矮", scale: 1 },
   { id: "medium", label: "中", scale: 1.4 },
@@ -74,7 +68,6 @@ function render() {
   const ledgerScroll = keepScroll ? app.querySelector(".ledger")?.scrollTop || 0 : 0;
   const sideScroll = keepScroll ? app.querySelector(".side")?.scrollTop || 0 : 0;
   const windowScroll = keepScroll ? window.scrollY : 0;
-  const spritePreset = presetOf(SPRITE_PRESETS, library.settings?.spriteScale, "large");
   const dialogPreset = presetOf(DIALOG_PRESETS, library.settings?.dialogScale, "short");
   app.innerHTML = `
     <div class="shell" data-skin="${esc(skin.id)}">
@@ -100,7 +93,7 @@ function render() {
           )
           .join("")}
       </nav>
-      <main class="stage${sceneOk ? " has-scene" : ""}" id="stage" style="--sprite-scale:${spritePreset.scale};--dialog-scale:${dialogPreset.scale}">
+      <main class="stage${sceneOk ? " has-scene" : ""}" id="stage" style="--dialog-scale:${dialogPreset.scale}">
         ${sceneOk ? `<div class="stage-bg" style="background-image:url('${esc(sceneUrl)}')"></div>` : `<div class="curtain left"></div><div class="curtain right"></div>`}
         ${view === "stage" ? stageHtml(session, scene, sceneUrl) : ledgerHtml()}
       </main>
@@ -206,7 +199,8 @@ function spriteHtml(person, speaker) {
   const someoneSpeaking = Boolean(speaker?.id) && speaker.id !== "system";
   const quiet = someoneSpeaking && person.id !== speaker.id;
   const image = src ? `<img alt="${esc(person.name)}的立绘" src="${esc(src)}" />` : "";
-  return `<div class="sprite ${quiet ? "is-quiet" : "is-speaking"}"><div class="figure" style="--accent:${accent(person.id)}">${image}</div></div>`;
+  const pose = poseOf(person);
+  return `<div class="sprite ${quiet ? "is-quiet" : "is-speaking"}" style="--pose-x:${pose.x};--pose-y:${pose.y};--pose-scale:${pose.scale}"><div class="figure" style="--accent:${accent(person.id)}">${image}</div></div>`;
 }
 
 function ledgerHtml() {
@@ -348,7 +342,7 @@ function cardsHtml() {
   const players = library.characters.filter((item) => item.kind === "player");
   return `
     <h2>人设卡</h2>
-    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像和全身图都可以裁一下再留下。</p>
+    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像和全身图都可以裁一下再留下。左右、上下和放大记在这张卡上，每一场都用这一套。</p>
     <div class="row">
       <button class="primary" type="button" data-new="player">新的玩家人设</button>
       <button class="ghost" type="button" data-new="npc">新的角色（记在当前舞台）</button>
@@ -389,6 +383,7 @@ function cardHtml(person) {
       <label>全身图 / 立绘（可裁成立绘）</label>
       <input type="file" accept="image/*" data-crop="full" data-person="${esc(person.id)}" />
       <p class="help">${person.fullBodyFile ? `已记下 ${esc(person.fullBodyFile)}` : "没有全身图时，舞台上用剪影占位。"}</p>
+      ${poseFieldsHtml(person)}
       <div class="row">
         <button class="primary" type="submit">保存人设</button>
         <button class="danger" type="button" data-remove="${esc(person.id)}">删除</button>
@@ -642,17 +637,9 @@ function sideHtml(session) {
 }
 
 function scaleControlsHtml() {
-  const sprite = presetOf(SPRITE_PRESETS, library.settings?.spriteScale, "large");
   const dialog = presetOf(DIALOG_PRESETS, library.settings?.dialogScale, "short");
   return `
     <div class="scale-block">
-    <h2>立绘大小</h2>
-    <div class="preset-row" role="group" aria-label="立绘大小">
-      ${SPRITE_PRESETS.map(
-        (item) =>
-          `<button type="button" class="mode" data-set-sprite="${item.id}" aria-pressed="${item.id === sprite.id}">${item.label}</button>`,
-      ).join("")}
-    </div>
     <h2>对话框高度</h2>
     <div class="preset-row" role="group" aria-label="对话框高度">
       ${DIALOG_PRESETS.map(
@@ -660,7 +647,7 @@ function scaleControlsHtml() {
           `<button type="button" class="mode" data-set-dialog="${item.id}" aria-pressed="${item.id === dialog.id}">${item.label}</button>`,
       ).join("")}
     </div>
-    <p class="help">点一下就换。这个选择会留在这台电脑上，关掉再打开还在。</p>
+    <p class="help">点一下就换对话框高度。这个选择会留在这台电脑上。每位角色的立绘位置和放大，在「人设」那张卡上单独保存。</p>
     </div>
   `;
 }
@@ -717,6 +704,61 @@ function skinNameStyle(line) {
 
 function presetOf(list, id, fallback) {
   return list.find((item) => item.id === id) || list.find((item) => item.id === fallback);
+}
+
+function poseSpec() {
+  const spec = library.view?.stagePose;
+  return {
+    defaults: spec?.defaults || { x: 0, y: 0, scale: 1.15 },
+    limits: spec?.limits || {
+      x: { min: -80, max: 80, step: 1 },
+      y: { min: -30, max: 30, step: 1 },
+      scale: { min: 0.4, max: 2.4, step: 0.05 },
+    },
+  };
+}
+
+function poseOf(person) {
+  const { defaults, limits } = poseSpec();
+  const raw = person?.stagePose || {};
+  return {
+    x: clampPose(raw.x, limits.x, defaults.x),
+    y: clampPose(raw.y, limits.y, defaults.y),
+    scale: clampPose(raw.scale, limits.scale, defaults.scale),
+  };
+}
+
+function clampPose(value, limit, fallback) {
+  const number = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return clamp(number, limit.min, limit.max);
+}
+
+function poseFieldsHtml(person) {
+  const { limits } = poseSpec();
+  const pose = poseOf(person);
+  const note =
+    person.kind === "player"
+      ? "玩家本人不会作为立绘上台。这里仍记下左右、上下和放大，和别的人设卡用同一套字段。"
+      : "保存后，这个角色在每一场、每一座舞台都用这一套。正的 X 往右，正的 Y 往上。放大 1 大约是以前的「大」，默认 1.15。";
+  const row = (key, label, name) => {
+    const limit = limits[key];
+    const value = pose[key];
+    return `
+      <div class="pose-line">
+        <label for="${esc(person.id)}-${name}">${label}</label>
+        <input id="${esc(person.id)}-${name}" name="${name}" type="number" inputmode="decimal" min="${limit.min}" max="${limit.max}" step="${limit.step}" value="${value}" />
+        <input type="range" data-pose-range="${name}" min="${limit.min}" max="${limit.max}" step="${limit.step}" value="${value}" aria-label="${label}" />
+      </div>`;
+  };
+  return `
+    <div class="pose">
+      <h4>台上的位置</h4>
+      <p class="help">${note}</p>
+      ${row("x", "左右 X", "poseX")}
+      ${row("y", "上下 Y", "poseY")}
+      ${row("scale", "放大", "poseScale")}
+    </div>`;
 }
 
 function stagePickerHtml() {
@@ -913,12 +955,6 @@ function bind() {
   app.querySelectorAll("[data-mode]").forEach((button) => {
     button.addEventListener("click", () => act({ type: "session.setMode", mode: button.dataset.mode }));
   });
-  app.querySelectorAll("[data-set-sprite]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (button.getAttribute("aria-pressed") === "true") return;
-      act({ type: "settings.update", spriteScale: button.dataset.setSprite });
-    });
-  });
   app.querySelectorAll("[data-set-dialog]").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.getAttribute("aria-pressed") === "true") return;
@@ -1040,6 +1076,17 @@ function bind() {
   app.querySelectorAll("[data-new]").forEach((button) => {
     button.addEventListener("click", () => act({ type: "character.create", kind: button.dataset.new }));
   });
+  app.querySelectorAll("[data-pose-range]").forEach((range) => {
+    const number = range.closest("form")?.querySelector(`[name="${range.dataset.poseRange}"]`);
+    if (!number) return;
+    range.addEventListener("input", () => {
+      number.value = range.value;
+    });
+    number.addEventListener("input", () => {
+      if (number.value === "") return;
+      range.value = number.value;
+    });
+  });
   app.querySelectorAll("[data-card]").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -1052,6 +1099,11 @@ function bind() {
           summary: data.get("summary"),
           personality: data.get("personality"),
           speechStyle: data.get("speechStyle"),
+          stagePose: {
+            x: data.get("poseX"),
+            y: data.get("poseY"),
+            scale: data.get("poseScale"),
+          },
         },
       });
     });

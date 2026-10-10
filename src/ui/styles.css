@@ -322,6 +322,8 @@ button { cursor: pointer; }
   width: 100%;
   height: min(calc(78vh * var(--sprite-scale)), calc(920px * var(--sprite-scale)));
   max-height: 100%;
+  transform-origin: center bottom;
+  transform: translate(calc(var(--pose-x, 0) * 1%), calc(var(--pose-y, 0) * -1%)) scale(var(--pose-scale, 1.15));
   border-radius: 160px 160px 18px 18px;
   background:
     radial-gradient(circle at 50% 86px, #f7f1e6 0 42px, transparent 43px),
@@ -594,6 +596,41 @@ button { cursor: pointer; }
   letter-spacing: 0.06em;
 }
 
+.pose {
+  margin-top: 12px;
+  padding-top: 4px;
+  border-top: var(--frame) solid var(--line);
+}
+
+.pose h4 {
+  margin: 8px 0 4px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.pose-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  gap: 4px 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.pose-line label { margin: 0; }
+
+.pose-line input[type="number"] {
+  width: 76px;
+  padding: 6px 8px;
+}
+
+.pose-line input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--gold);
+}
+
 label {
   display: block;
   margin: 8px 0 4px;
@@ -602,7 +639,7 @@ label {
   letter-spacing: 0.06em;
 }
 
-input[type="text"], input[type="password"], input[type="url"], textarea, select {
+input[type="text"], input[type="password"], input[type="url"], input[type="number"], textarea, select {
   width: 100%;
   border: var(--frame) solid var(--line);
   background: var(--input-bg);

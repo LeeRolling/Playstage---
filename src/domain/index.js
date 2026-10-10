@@ -4,7 +4,13 @@
  * 本目录不引用界面，也不操作浏览器。界面只通过本地 HTTP 调用这些能力。
  */
 
-import { createCharacter, removeCharacter, updateCharacter } from "./characters.js";
+import {
+  createCharacter,
+  DEFAULT_STAGE_POSE,
+  removeCharacter,
+  STAGE_POSE_LIMITS,
+  updateCharacter,
+} from "./characters.js";
 import { adviseFromVram, completeGuide, describePrerequisites, DISCLAIMER } from "./guide.js";
 import { createSeedLibrary, migrateLibrary } from "./library.js";
 import {
@@ -78,6 +84,14 @@ export function toPublicLibrary(library) {
       chosen: settings.uiSkin,
     },
     skins: UI_SKINS.map((item) => ({ id: item.id, name: item.name })),
+    stagePose: {
+      defaults: { ...DEFAULT_STAGE_POSE },
+      limits: {
+        x: { ...STAGE_POSE_LIMITS.x },
+        y: { ...STAGE_POSE_LIMITS.y },
+        scale: { ...STAGE_POSE_LIMITS.scale },
+      },
+    },
   };
   return next;
 }

@@ -4,6 +4,9 @@
  *
  * uiSkinMode 为 auto 时，样子跟着当前舞台走。
  * 为 manual 时，用 uiSkin 里选定的那一套，换舞台也不会改，直到玩家再选。
+ *
+ * spriteScale 只为旧档留着，读进来不会报错，也不再拿来画立绘。
+ * 每位角色的位置和放大记在人设的 stagePose 上。
  */
 
 import { clone } from "./util.js";

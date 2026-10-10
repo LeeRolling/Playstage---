@@ -3,6 +3,7 @@
  * 夜晚图与白天同一文件夹，文件名里的「_白天」换成「_晚上」。
  */
 
+import { DEFAULT_STAGE_POSE, ensureCharacterPoses } from "./characters.js";
 import { DEFAULT_SETTINGS, ensureSettings } from "./settings.js";
 
 export const SEEDED_AT = "2026-10-10T00:00:00.000Z";
@@ -137,7 +138,7 @@ export function createSeedLibrary() {
 
 export function migrateLibrary(raw) {
   if (raw && raw.revision >= 2 && Array.isArray(raw.worldBooks) && Array.isArray(raw.stages)) {
-    return ensureSettings(raw);
+    return ensureCharacterPoses(ensureSettings(raw));
   }
   const seed = createSeedLibrary();
   if (raw?.guide) {
@@ -170,6 +171,7 @@ function player() {
     speechStyle: "短句。",
     avatarFile: "",
     fullBodyFile: "",
+    stagePose: { ...DEFAULT_STAGE_POSE },
   };
 }
 
@@ -184,6 +186,7 @@ function npc(id, stageId, name, folder, fileName, summary, personality, speechSt
     speechStyle,
     avatarFile: "",
     fullBodyFile: `assets/defaults/characters/女/${folder}/${fileName}`,
+    stagePose: { ...DEFAULT_STAGE_POSE },
   };
 }
 
