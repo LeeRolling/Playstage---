@@ -1,6 +1,7 @@
 /*
   皮肤靠这些名字换颜色和圆角。改完保存，刷新页面即可。
   四套内置皮肤在文件末尾，用 data-skin 区分。说明见 docs/自定义皮肤.md。
+  交给 AI 改时，先读 docs/皮肤制作-给AI.md。
 */
 :root {
   --bg: #0c0a0e;
@@ -861,6 +862,70 @@ a { color: var(--gold); }
 }
 
 .portrait-row { display: flex; gap: 10px; align-items: center; }
+
+/* 地点一块一块排。缩略图下面跟自己的路径和换图按钮，长路径在格子里截断，不再把整行撑出账本。 */
+.location-card {
+  container-type: inline-size;
+  margin: 0 0 12px;
+  padding: 10px 10px 4px;
+  border: var(--frame) solid var(--line);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.02);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.location-name {
+  display: block;
+  margin: 0 0 8px;
+  letter-spacing: 0.06em;
+}
+
+.location-pairs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+.location-slot {
+  min-width: 0;
+}
+
+.location-slot .thumb.wide {
+  display: block;
+}
+
+.location-path {
+  margin: 8px 0 0;
+  color: var(--ledger-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-slot label {
+  margin-top: 8px;
+}
+
+.location-card input[type="file"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 0 8px;
+}
+
+.location-card .help {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@container (max-width: 460px) {
+  .location-pairs { grid-template-columns: minmax(0, 1fr); }
+}
 
 @media (max-width: 980px) {
   .shell { grid-template-columns: 76px minmax(0, 1fr); }
