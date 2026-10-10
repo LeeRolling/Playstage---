@@ -202,6 +202,111 @@ test("保存人设和世界书会明确告诉你写成了", () => {
   assert.equal(book.library.worldBooks.find((item) => item.id === "book-azure").summary, "补了一句");
 });
 
+test("每人设记住台上的位置和放大，缺了就居中并略放大", () => {
+  const seeded = createSeedLibrary();
+  for (const person of seeded.characters) {
+    assert.deepEqual(person.stagePose, { x: 0, y: 0, scale: 1.15 });
+  }
+
+  const made = dispatch(seeded, { type: "character.create", kind: "npc" });
+  assert.deepEqual(made.library.characters.at(-1).stagePose, { x: 0, y: 0, scale: 1.15 });
+  const player = dispatch(seeded, { type: "character.create", kind: "player" }).library.characters.at(-1);
+  assert.equal(player.kind, "player");
+  assert.deepEqual(player.stagePose, { x: 0, y: 0, scale: 1.15 });
+
+  const saved = dispatch(seeded, {
+    type: "character.update",
+    id: "npc-chutang",
+    fields: { stagePose: { x: -20, y: 6, scale: 1.6 } },
+  });
+  assert.match(saved.message, /人设已保存/);
+  assert.deepEqual(saved.library.characters.find((item) => item.id === "npc-chutang").stagePose, {
+    x: -20,
+    y: 6,
+    scale: 1.6,
+  });
+  assert.deepEqual(saved.library.characters.find((item) => item.id === "npc-xingxuan").stagePose, {
+    x: 0,
+    y: 0,
+    scale: 1.15,
+  });
+
+  const clamped = dispatch(seeded, {
+    type: "character.update",
+    id: "player-guest",
+    fields: { stagePose: { x: 999, y: -999, scale: 9 } },
+  });
+  assert.deepEqual(clamped.library.characters.find((item) => item.id === "player-guest").stagePose, {
+    x: 48,
+    y: -30,
+    scale: 2.5,
+  });
+
+  const partial = dispatch(saved.library, {
+    type: "character.update",
+    id: "npc-chutang",
+    fields: { fullBodyFile: "assets/defaults/characters/女/现代/初棠.png", stagePose: { scale: 0.1 } },
+  });
+  const chutang = partial.library.characters.find((item) => item.id === "npc-chutang");
+  assert.equal(chutang.summary.length > 0, true);
+  assert.equal(chutang.fullBodyFile, "assets/defaults/characters/女/现代/初棠.png");
+  assert.deepEqual(chutang.stagePose, { x: -20, y: 6, scale: 0.4 });
+
+  const textOnly = dispatch(partial.library, {
+    type: "character.update",
+    id: "npc-chutang",
+    fields: { summary: "仍在" },
+  });
+  assert.equal(textOnly.library.characters.find((item) => item.id === "npc-chutang").summary, "仍在");
+  assert.deepEqual(textOnly.library.characters.find((item) => item.id === "npc-chutang").stagePose, {
+    x: -20,
+    y: 6,
+    scale: 0.4,
+  });
+
+  const old = {
+    revision: 2,
+    stagePicked: true,
+    activeStageId: "stage-frost",
+    stages: [{ id: "stage-frost" }],
+    worldBooks: [{ id: "book-frost" }],
+    settings: { spriteScale: "small", dialogScale: "short", uiSkin: "classic", uiSkinMode: "auto" },
+    characters: [
+      { id: "npc-astrid", kind: "npc", name: "Astrid" },
+      { id: "npc-sigrid", kind: "npc", name: "Sigrid", stagePose: { x: 12, y: -3, scale: 1.4 } },
+    ],
+  };
+  const migrated = migrateLibrary(old);
+  assert.notEqual(migrated, old);
+  assert.deepEqual(migrated.characters[0].stagePose, { x: 0, y: 0, scale: 1.15 });
+  assert.deepEqual(migrated.characters[1].stagePose, { x: 12, y: -3, scale: 1.4 });
+  assert.equal(migrated.settings.spriteScale, "small");
+  assert.equal(migrated.stagePicked, true);
+
+  const messy = migrateLibrary({
+    ...old,
+    characters: [{ id: "npc-astrid", stagePose: { x: "nope", y: 4, scale: 80, extra: true } }],
+  });
+  assert.deepEqual(messy.characters[0].stagePose, { x: 0, y: 4, scale: 2.5 });
+
+  const stable = {
+    revision: 2,
+    stagePicked: true,
+    activeStageId: "stage-frost",
+    stages: [{ id: "stage-frost" }],
+    worldBooks: [{ id: "book-frost" }],
+    settings: { spriteScale: "large", dialogScale: "short", uiSkin: "classic", uiSkinMode: "auto" },
+    characters: [{ id: "npc-astrid", stagePose: { x: 0, y: 0, scale: 1.15 } }],
+  };
+  assert.equal(migrateLibrary(stable), stable);
+
+  const spec = toPublicLibrary(seeded).view.stagePose;
+  assert.deepEqual(spec.defaults, { x: 0, y: 0, scale: 1.15 });
+  assert.deepEqual(spec.limits.x, { min: -48, max: 48, step: 1 });
+  assert.deepEqual(spec.limits.y, { min: -30, max: 30, step: 1 });
+  assert.deepEqual(spec.limits.scale, { min: 0.4, max: 2.5, step: 0.05 });
+});
+
 test("剧情包占位导出含前文提要，导入只登记", () => {
   const picked = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-azure" }).library;
   const exported = dispatch(picked, { type: "transfer.export", kind: "story" });
