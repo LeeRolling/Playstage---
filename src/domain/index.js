@@ -13,7 +13,9 @@ import {
 } from "./characters.js";
 import { adviseFromVram, completeGuide, describePrerequisites, DISCLAIMER } from "./guide.js";
 import { createSeedLibrary, migrateLibrary } from "./library.js";
+import { buildActingMessages, planSpeakers } from "./acting.js";
 import {
+  actingTarget,
   armModelRetest,
   LOCAL_CONNECTED_NOTE,
   publicModel,
@@ -25,6 +27,9 @@ import { createSave, loadSave, removeSave } from "./saves.js";
 import { ensureCurrentLocation, resolveScene } from "./scene.js";
 import { normalizeSettings, resolveUiSkin, skinName, UI_SKINS, updateSettings } from "./settings.js";
 import {
+  appendSystemLine,
+  commitNpcReply,
+  finishCoolDown,
   getSession,
   sendPlayerLine,
   sessionForm,
@@ -50,15 +55,23 @@ import {
 } from "./world-book.js";
 
 export {
+  actingTarget,
   adviseFromVram,
+  appendSystemLine,
   armModelRetest,
+  buildActingMessages,
+  commitNpcReply,
   createSeedLibrary,
   describePrerequisites,
   DISCLAIMER,
+  finishCoolDown,
   LOCAL_CONNECTED_NOTE,
   migrateLibrary,
+  planSpeakers,
   publicModel,
   recordProbe,
+  sendPlayerLine,
+  updateModel,
   sessionForm,
   sessionFormLabel,
   SPEAK_MODES,
@@ -154,7 +167,7 @@ export function dispatch(library, action) {
     case "model.update":
       return plain(updateModel(library, action), "模型设置已写在本机。剧戏台仍不附带模型。");
     case "model.updateSlot":
-      return plain(updateCloudSlot(library, action), "云端接口已记下。这一版还不会拿它来演戏。");
+      return plain(updateCloudSlot(library, action), "云端接口已记下。上台时用的是你在上面选中的那一家。");
     case "model.recordProbe":
       return plain(recordProbe(library, action));
     case "guide.complete":

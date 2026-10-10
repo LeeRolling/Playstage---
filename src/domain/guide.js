@@ -36,7 +36,7 @@ export function adviseFromVram(vramMb) {
   return {
     level: "limited",
     title: "显存比较少",
-    body: `仍可以看看有没有很轻的本地模型，体验会更有限。请到 ${CANIRUN} 自查。如果没有合适的，可以改用你自己的云端接口，或先只用软件里的占位回复熟悉界面。`,
+    body: `仍可以看看有没有很轻的本地模型，体验会更有限。请到 ${CANIRUN} 自查。如果没有合适的，可以改用你自己的云端接口。剧戏台不提供模型。`,
   };
 }
 
@@ -44,7 +44,7 @@ export function describePrerequisites({ ollamaReachable }) {
   return {
     node: "你能看见这个页面，说明 Node.js 已经在跑。这一项不用再检查。",
     ollama: ollamaReachable
-      ? "本机的 Ollama 有回应。到「模型」页可以再测一次。这一版即使连上，也不会用它来演戏。"
+      ? "本机的 Ollama 有回应。到「模型」页读取模型并选中之后，上台说话就会用它来接话。剧戏台不附带模型。"
       : "没有测到本机 Ollama。不着急，这不挡你先选舞台。想用本地模型时，再自己打开推理软件，到「模型」页测试。",
     ollamaReachable: Boolean(ollamaReachable),
   };

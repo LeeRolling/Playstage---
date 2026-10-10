@@ -35,6 +35,8 @@ let bookFocus = "";
 let paintedView = null;
 let toastTimer = 0;
 let pendingAnchor = "";
+let sending = false;
+let composerDraft = "";
 const previews = new Map();
 const sceneCache = new Map();
 
@@ -129,7 +131,8 @@ function render() {
   };
   revealAnchor();
   const field = app.querySelector("#say");
-  if (field && view === "stage" && !guideOpen && library.stagePicked && !forcePicker) field.focus({ preventScroll: true });
+  if (field && composerDraft) field.value = composerDraft;
+  if (field && view === "stage" && !guideOpen && library.stagePicked && !forcePicker && !sending) field.focus({ preventScroll: true });
   armToast();
 }
 
@@ -170,8 +173,8 @@ function stageHtml(session, scene, sceneUrl) {
             .join("")}
         </div>
         <form class="composer" id="say-form">
-          <input id="say" name="text" type="text" maxlength="400" placeholder="${library.stagePicked ? "写一句，送上台" : "先选一座舞台"}" autocomplete="off" ${library.stagePicked ? "" : "disabled"} />
-          <button type="submit" ${library.stagePicked ? "" : "disabled"}>送上台</button>
+          <input id="say" name="text" type="text" maxlength="400" placeholder="${sending ? "正在请台上的人接话…" : library.stagePicked ? "写一句，送上台" : "先选一座舞台"}" autocomplete="off" ${library.stagePicked && !sending ? "" : "disabled"} />
+          <button type="submit" ${library.stagePicked && !sending ? "" : "disabled"}>${sending ? "接话中" : "送上台"}</button>
         </form>
       </div>
     </section>
@@ -496,44 +499,83 @@ function transferHtml() {
 
 function modelHtml() {
   const model = library.model;
-  const localStatus = model.localProbe?.ok ? model.localProbe.message : "";
+  const zhipu = model.zhipu || {};
+  const qwen = model.qwen || {};
+  const localStatus = model.localProbe?.message || "";
+  const known = [...(model.localModels || [])];
+  if (model.localModel && !known.includes(model.localModel)) known.unshift(model.localModel);
+  const extraSlots = (model.cloudSlots || []).filter((slot) => {
+    if (slot.vendor === "zhipu" || slot.vendor === "qwen") return false;
+    const untouched = slot.id === "slot-extra" && !slot.apiKeySet && !slot.model && !slot.baseUrl && !(slot.characterIds || []).length;
+    return !untouched;
+  });
   return `
     <h2>模型设置</h2>
-    <p class="help">剧戏台不附带模型。本机推理（推荐）或云端接口，都要你自己准备。连上了，这一版也不会拿它来演戏。</p>
+    <p class="help">剧戏台不附带、也不下载模型。选下面的一家，点「保存设置」之后，上台说话就会由它来接话。测试云端之前也要先保存，否则用的还是上次留下的钥匙。</p>
     ${model.remindRetest ? `<div class="callout">这次打开软件，请再测一次本机连接。上次的结果还留在下面，但不代表现在仍然通着。</div>` : ""}
-    <div class="callout">需人工完成：安装 Ollama 或其他本机推理软件，以及下载模型。请只从官方渠道获取官方开源模型。</div>
+    <div class="callout">需人工完成：本机请先自己安装并打开 Ollama，再装好模型（例如你准备的 Qwen）。云端请到智谱或阿里云百炼自己申请钥匙。只建议从官方渠道获取官方开源模型。</div>
     ${prerequisites ? `<p class="help">${esc(prerequisites.ollama)}</p>` : ""}
     <form id="model-form" class="grid" style="margin-top:14px">
       <div class="block">
-        <h3>本机</h3>
-        <label class="check"><input type="radio" name="provider" value="local" ${model.provider !== "cloud" ? "checked" : ""} /> 以后优先用这台电脑</label>
+        <h3>本机 Ollama</h3>
+        <label class="check"><input type="radio" name="provider" value="local" ${model.provider === "local" ? "checked" : ""} /> 用这台电脑演戏</label>
         <label>本机地址</label>
         <input name="localBaseUrl" type="url" value="${esc(model.localBaseUrl)}" />
-        <label>模型名（你自己装的那个）</label>
-        <input name="localModel" type="text" value="${esc(model.localModel)}" placeholder="例如你在 Ollama 里看到的名字" />
-        ${localStatus ? `<p class="model-status">${esc(localStatus)}</p>` : `<p class="help">测通之后，这里会留下一句：连上了。这一版还不会用它来演戏，只确认路是通的。</p>`}
+        <p class="help">Ollama 打开后，地址一般是 http://127.0.0.1:11434 。写成 http://127.0.0.1:11434/v1 也可以。先点「读取本机模型」，再在下面选中你装好的那个。</p>
+        <label>读取到的模型</label>
+        <select id="local-model-pick">
+          <option value="">${known.length ? "从列表里选" : "还没有列表。先读取本机模型"}</option>
+          ${known.map((name) => `<option value="${esc(name)}" ${name === model.localModel ? "selected" : ""}>${esc(name)}</option>`).join("")}
+        </select>
+        <label>模型名</label>
+        <input name="localModel" type="text" value="${esc(model.localModel)}" placeholder="例如你在 Ollama 里看到的 qwen" />
+        ${localStatus ? `<p class="model-status">${esc(localStatus)}</p>` : `<p class="help">读取成功后，这里会留下一句：连上了。之后上台就会用它接话。</p>`}
+        <div class="row"><button class="ghost" type="button" id="test-model">读取本机模型</button></div>
       </div>
       <div class="block">
-        <h3>旧的单接口（仍可用）</h3>
-        <label class="check"><input type="radio" name="provider" value="cloud" ${model.provider === "cloud" ? "checked" : ""} /> 临时改用我自己的云端接口</label>
-        <label>云端地址</label>
-        <input name="cloudBaseUrl" type="url" value="${esc(model.cloudBaseUrl)}" placeholder="OpenAI 兼容地址" />
+        <h3>智谱 GLM</h3>
+        <label class="check"><input type="radio" name="provider" value="zhipu" ${model.provider === "zhipu" ? "checked" : ""} /> 用智谱演戏</label>
+        <p class="help">地址已经填好：${esc(zhipu.baseUrl || "https://open.bigmodel.cn/api/paas/v4")} 。到智谱开放平台申请钥匙，粘贴在下面。钥匙只存在这台电脑的资料里。</p>
+        <label>模型名</label>
+        <input name="zhipuModel" type="text" value="${esc(zhipu.model || "")}" placeholder="例如 glm-4-flash" />
+        <label>智谱钥匙</label>
+        <input name="zhipuApiKey" type="password" value="" placeholder="${zhipu.apiKeySet ? "已保存在这台电脑。留空表示不改" : "粘贴钥匙"}" autocomplete="off" />
+        <label class="check"><input name="clearZhipuApiKey" type="checkbox" /> 清掉已保存的智谱钥匙</label>
+        <div class="row"><button class="ghost" type="button" data-test-slot="slot-zhipu">测试智谱</button></div>
+      </div>
+      <div class="block">
+        <h3>通义千问</h3>
+        <label class="check"><input type="radio" name="provider" value="qwen" ${model.provider === "qwen" ? "checked" : ""} /> 用通义千问演戏</label>
+        <p class="help">地址已经填好：${esc(qwen.baseUrl || "https://dashscope.aliyuncs.com/compatible-mode/v1")} 。到阿里云百炼申请钥匙，粘贴在下面。钥匙只存在这台电脑的资料里。</p>
+        <label>模型名</label>
+        <input name="qwenModel" type="text" value="${esc(qwen.model || "")}" placeholder="例如 qwen-plus" />
+        <label>千问钥匙</label>
+        <input name="qwenApiKey" type="password" value="" placeholder="${qwen.apiKeySet ? "已保存在这台电脑。留空表示不改" : "粘贴钥匙"}" autocomplete="off" />
+        <label class="check"><input name="clearQwenApiKey" type="checkbox" /> 清掉已保存的千问钥匙</label>
+        <div class="row"><button class="ghost" type="button" data-test-slot="slot-qwen">测试通义千问</button></div>
+      </div>
+      <div class="block">
+        <h3>另一家云端（可选）</h3>
+        <label class="check"><input type="radio" name="provider" value="cloud" ${model.provider === "cloud" ? "checked" : ""} /> 用这一家演戏</label>
+        <label>地址</label>
+        <input name="cloudBaseUrl" type="url" value="${esc(model.cloudBaseUrl)}" placeholder="OpenAI 兼容地址，以 /v1 结尾常见" />
+        <label>模型名</label>
+        <input name="cloudModel" type="text" value="${esc(model.cloudModel)}" />
         <label>钥匙（只存在这台电脑）</label>
         <input name="cloudApiKey" type="password" value="" placeholder="${model.cloudApiKeySet ? "已保存。留空表示不改" : "可选"}" autocomplete="off" />
-        <label>云端模型名</label>
-        <input name="cloudModel" type="text" value="${esc(model.cloudModel)}" />
-        <label class="check"><input name="clearCloudApiKey" type="checkbox" /> 清掉已保存的钥匙</label>
+        <label class="check"><input name="clearCloudApiKey" type="checkbox" /> 清掉这一家的钥匙</label>
       </div>
       <div class="row">
         <button class="primary" type="submit">保存设置</button>
-        <button class="ghost" type="button" id="test-model">测试本机连接</button>
       </div>
     </form>
-    <h3>云端接口位</h3>
-    <p class="help">一家接口可以绑 2 到 3 位角色，例如 DeepSeek、通义千问。这里只是先把人对上，演戏时还不会真的去调用。</p>
-    <div class="grid">
-      ${(model.cloudSlots || []).map((slot) => slotHtml(slot)).join("")}
-    </div>
+    ${
+      extraSlots.length
+        ? `<h3>以前留下的接口</h3>
+           <p class="help">按角色分家还不会生效。上台时全场只用你上面选中的那一家。这里可以改地址，或清掉旧钥匙。</p>
+           <div class="grid">${extraSlots.map((slot) => slotHtml(slot)).join("")}</div>`
+        : ""
+    }
     <h3>免责声明</h3>
     <div class="callout">${esc(library.view.disclaimer)}</div>
     <p class="help">不确定显卡能跑什么，可以看 <a href="https://www.canirun.ai/models" target="_blank" rel="noreferrer">canirun.ai</a>，或重新打开新手引导。</p>
@@ -1010,10 +1052,19 @@ function bind() {
   locationPick?.addEventListener("change", () => act({ type: "session.setLocation", locationId: locationPick.value }));
 
   const say = app.querySelector("#say-form");
-  say?.addEventListener("submit", (event) => {
+  say?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const text = new FormData(say).get("text");
-    act({ type: "session.send", text });
+    if (sending) return;
+    const text = String(new FormData(say).get("text") || "").trim();
+    if (!text) return;
+    composerDraft = "";
+    sending = true;
+    notice = { tone: "ok", text: "正在请台上的人接话…" };
+    render();
+    const ok = await act({ type: "session.send", text }, { render: false });
+    sending = false;
+    if (!ok) composerDraft = text;
+    render();
   });
 
   app.querySelector("#book-focus")?.addEventListener("change", (event) => {
@@ -1172,6 +1223,10 @@ function bind() {
     });
   });
 
+  app.querySelector("#local-model-pick")?.addEventListener("change", (event) => {
+    const input = app.querySelector("#model-form input[name=localModel]");
+    if (input && event.target.value) input.value = event.target.value;
+  });
   app.querySelector("#model-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -1184,6 +1239,12 @@ function bind() {
       cloudModel: data.get("cloudModel"),
       cloudApiKey: data.get("cloudApiKey"),
       clearCloudApiKey: data.get("clearCloudApiKey") === "on",
+      zhipuModel: data.get("zhipuModel"),
+      zhipuApiKey: data.get("zhipuApiKey"),
+      clearZhipuApiKey: data.get("clearZhipuApiKey") === "on",
+      qwenModel: data.get("qwenModel"),
+      qwenApiKey: data.get("qwenApiKey"),
+      clearQwenApiKey: data.get("clearQwenApiKey") === "on",
     });
   });
   app.querySelector("#test-model")?.addEventListener("click", testModel);
@@ -1238,7 +1299,7 @@ function bind() {
   });
 }
 
-async function act(action) {
+async function act(action, options = {}) {
   try {
     const response = await fetch("/api/act", {
       method: "POST",
@@ -1248,23 +1309,23 @@ async function act(action) {
     const data = await response.json();
     if (!response.ok) {
       notice = { tone: "bad", text: data.message || "没做成。" };
-      render();
+      if (options.render !== false) render();
       return false;
     }
     library = data.library;
-    notice = data.message ? { tone: "ok", text: data.message } : null;
+    notice = data.message ? { tone: data.tone === "bad" ? "bad" : "ok", text: data.message } : null;
     if (data.download) download(data.download);
-    render();
-    return true;
+    if (options.render !== false) render();
+    return data.tone !== "bad";
   } catch {
     notice = { tone: "bad", text: "和本机剧戏台失去联系了。请看启动窗口是否还在。" };
-    render();
+    if (options.render !== false) render();
     return false;
   }
 }
 
 async function testModel() {
-  notice = { tone: "ok", text: "正在试着连接本机模型…" };
+  notice = { tone: "ok", text: "正在读取本机模型…" };
   render();
   try {
     const response = await fetch("/api/model/test", { method: "POST" });
