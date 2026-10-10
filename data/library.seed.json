@@ -566,5 +566,9 @@
     "completed": false,
     "disclaimerAccepted": false,
     "completedAt": null
+  },
+  "settings": {
+    "spriteScale": "large",
+    "dialogScale": "short"
   }
 }

@@ -3,6 +3,8 @@
  * 夜晚图与白天同一文件夹，文件名里的「_白天」换成「_晚上」。
  */
 
+import { DEFAULT_SETTINGS, ensureSettings } from "./settings.js";
+
 export const SEEDED_AT = "2026-10-10T00:00:00.000Z";
 
 const FROST_CAST = ["npc-astrid", "npc-sigrid", "npc-elin"];
@@ -126,12 +128,13 @@ export function createSeedLibrary() {
       disclaimerAccepted: false,
       completedAt: null,
     },
+    settings: { ...DEFAULT_SETTINGS },
   };
 }
 
 export function migrateLibrary(raw) {
   if (raw && raw.revision >= 2 && Array.isArray(raw.worldBooks) && Array.isArray(raw.stages)) {
-    return raw;
+    return ensureSettings(raw);
   }
   const seed = createSeedLibrary();
   if (raw?.guide) {
