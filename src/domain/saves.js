@@ -19,9 +19,23 @@ export function loadSave(library, saveId) {
   const save = next.saves.find((item) => item.id === saveId);
   if (!save) throw new Error("找不到这个档。");
   const index = next.sessions.findIndex((item) => item.id === save.snapshot.id);
-  if (index === -1) next.sessions = [clone(save.snapshot)];
-  else next.sessions[index] = clone(save.snapshot);
+  const restored = clone(save.snapshot);
+  if (index === -1) next.sessions = [restored];
+  else next.sessions[index] = restored;
+  applyStageFromSession(next, restored);
   return next;
+}
+
+function applyStageFromSession(library, session) {
+  if (!session?.worldBookId) {
+    library.stagePicked = false;
+    library.activeStageId = "";
+    return;
+  }
+  const stage = (library.stages || []).find((item) => item.worldBookId === session.worldBookId);
+  if (!stage) throw new Error("这个档对应的舞台找不到了。");
+  library.stagePicked = true;
+  library.activeStageId = stage.id;
 }
 
 export function removeSave(library, saveId) {
