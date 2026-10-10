@@ -602,7 +602,12 @@ function sideHtml(session) {
       book
         ? `<label>地点</label>
            <select id="location-pick">
-             ${book.locations.map((item) => `<option value="${esc(item.id)}" ${item.id === scene.locationId ? "selected" : ""}>${esc(item.name)}</option>`).join("")}
+             ${locationChoices(book, scene)
+               .map(
+                 (item) =>
+                   `<option value="${esc(item.id)}" ${item.id === scene.locationId ? "selected" : ""}>${esc(item.name)}</option>`,
+               )
+               .join("")}
            </select>
            <div class="row">
              <button type="button" class="mode" data-time="day" aria-pressed="${scene.timeOfDay !== "night"}">白天</button>
@@ -711,8 +716,8 @@ function poseSpec() {
   return {
     defaults: spec?.defaults || { x: 0, y: 0, scale: 1.15 },
     limits: spec?.limits || {
-      x: { min: -80, max: 80, step: 1 },
-      y: { min: -30, max: 30, step: 1 },
+      x: { min: -100, max: 100, step: 1 },
+      y: { min: -100, max: 100, step: 1 },
       scale: { min: 0.4, max: 2.4, step: 0.05 },
     },
   };
@@ -737,10 +742,11 @@ function clampPose(value, limit, fallback) {
 function poseFieldsHtml(person) {
   const { limits } = poseSpec();
   const pose = poseOf(person);
+  const scaleNote = "1 是正常大小，比 1 大，人就更大。默认 1.15，比正常略大一点。";
   const note =
     person.kind === "player"
-      ? "玩家本人不会作为立绘上台。这里仍记下左右、上下和放大，和别的人设卡用同一套字段。"
-      : "保存后，这个角色在每一场、每一座舞台都用这一套。正的 X 往右，正的 Y 往上。放大 1 大约是以前的「大」，默认 1.15。";
+      ? `玩家本人不会作为立绘上台。这里仍记下左右、上下和放大，和别的人设卡用同一套字段。${scaleNote}`
+      : `保存后，这个角色在每一场、每一座舞台都用这一套。正的 X 往右，正的 Y 往上。${scaleNote}`;
   const row = (key, label, name) => {
     const limit = limits[key];
     const value = pose[key];
@@ -986,6 +992,10 @@ function bind() {
     button.addEventListener("click", () => act({ type: "session.setTime", timeOfDay: button.dataset.time }));
   });
   const locationPick = app.querySelector("#location-pick");
+  const pickedLocation = library.view?.scene?.locationId || "";
+  if (locationPick && pickedLocation && [...locationPick.options].some((option) => option.value === pickedLocation)) {
+    locationPick.value = pickedLocation;
+  }
   locationPick?.addEventListener("change", () => act({ type: "session.setLocation", locationId: locationPick.value }));
 
   const say = app.querySelector("#say-form");
@@ -1409,6 +1419,28 @@ function download(file) {
   link.download = file.filename;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+function locationChoices(book, scene) {
+  const source =
+    Array.isArray(scene?.locations) && scene.locations.length
+      ? scene.locations
+      : (book?.locations || []).map((item) => ({ id: item.id, name: item.name }));
+  const places = [];
+  const seen = new Set();
+  for (const item of source) {
+    if (!item?.id || seen.has(item.id)) continue;
+    seen.add(item.id);
+    places.push({ id: item.id, name: item.name || "未命名地点" });
+  }
+  if (scene?.locationId && !seen.has(scene.locationId)) {
+    const name =
+      scene.locationName && scene.locationName !== "未定" && scene.locationName !== "未选舞台"
+        ? scene.locationName
+        : "当前地点";
+    places.unshift({ id: scene.locationId, name });
+  }
+  return places;
 }
 
 function focusedBook() {

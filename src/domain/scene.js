@@ -7,11 +7,39 @@ export function bookForSession(library, session = library.sessions?.[0]) {
   return library.worldBooks?.find((item) => item.id === session.worldBookId) || null;
 }
 
+/**
+ * 下拉里的地点必须来自这场挂着的那本世界书。
+ * 记下的 locationId 若不在这本里（空的，或还指着另一座舞台），就改落到这本书的开场地点，
+ * 这样选中项一定是名单里的某一条。
+ */
+export function ensureCurrentLocation(library) {
+  const session = library?.sessions?.[0];
+  if (!session?.state || !session.worldBookId) return library;
+  const book = bookForSession(library, session);
+  const locations = book?.locations || [];
+  if (!locations.length) return library;
+  if (locations.some((item) => item.id === session.state.locationId)) return library;
+  const opening = openingLocation(locations, stageForLocation(library, session));
+  if (!opening) return library;
+  const sessions = library.sessions.slice();
+  sessions[0] = {
+    ...session,
+    state: {
+      ...session.state,
+      locationId: opening.id,
+      activeTriggerId: "",
+    },
+  };
+  return { ...library, sessions };
+}
+
 export function resolveScene(library) {
   const session = library.sessions?.[0];
   const book = bookForSession(library, session);
   const stage = library.stages?.find((item) => item.id === library.activeStageId) || null;
-  const location = book?.locations?.find((item) => item.id === session?.state?.locationId) || null;
+  const locations = book?.locations || [];
+  const matched = locations.find((item) => item.id === session?.state?.locationId) || null;
+  const location = matched || (session?.worldBookId ? openingLocation(locations, stageForLocation(library, session)) : null);
   const timeOfDay = session?.state?.timeOfDay === "night" ? "night" : "day";
   const trigger = location?.triggers?.find((item) => item.id && item.id === session?.state?.activeTriggerId) || null;
   let imageFile = "";
@@ -29,6 +57,7 @@ export function resolveScene(library) {
     worldName: book?.name || "",
     locationId: location?.id || "",
     locationName: location?.name || (library.stagePicked ? "未定" : "未选舞台"),
+    locations: locations.map((item) => ({ id: item.id, name: item.name })),
     timeOfDay,
     imageFile,
     imageKind,
@@ -36,6 +65,19 @@ export function resolveScene(library) {
     triggerName: trigger?.name || "",
     triggerStub: Boolean(trigger && !trigger.imageFile),
   };
+}
+
+function stageForLocation(library, session) {
+  return (
+    library.stages?.find((item) => item.id === library.activeStageId) ||
+    library.stages?.find((item) => session?.worldBookId && item.worldBookId === session.worldBookId) ||
+    null
+  );
+}
+
+function openingLocation(locations, stage) {
+  if (!locations.length) return null;
+  return locations.find((item) => item.id === stage?.openingLocationId) || locations[0];
 }
 
 export function applyStoryCues(book, session, text) {

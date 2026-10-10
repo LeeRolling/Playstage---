@@ -1006,7 +1006,7 @@ html[data-skin="eastern"] {
   --rail-active-ink: #e7f3ee;
   --ledger-bg: rgba(243, 233, 215, 0.94);
   --ledger-ink: #1a2332;
-  --ledger-muted: #5e564c;
+  --ledger-muted: #3f382f;
   --modal-bg: #f3e9d7;
   --modal-ink: #1a2332;
   --modal-muted: #5e564c;
@@ -1042,6 +1042,61 @@ html[data-skin="eastern"] {
     radial-gradient(circle at 20px 20px, transparent 3px, rgba(91, 140, 122, 0.9) 3.5px, rgba(91, 140, 122, 0.9) 4.6px, transparent 5.2px) right top / 40px 40px no-repeat,
     radial-gradient(circle at 20px 20px, transparent 3px, rgba(91, 140, 122, 0.9) 3.5px, rgba(91, 140, 122, 0.9) 4.6px, transparent 5.2px) left bottom / 40px 40px no-repeat,
     radial-gradient(circle at 20px 20px, transparent 3px, rgba(91, 140, 122, 0.9) 3.5px, rgba(91, 140, 122, 0.9) 4.6px, transparent 5.2px) right bottom / 40px 40px no-repeat;
+}
+
+/* 右侧栏是深色，地点下拉不能沿用账本上的深色字。 */
+html[data-skin="eastern"] .side select {
+  color: #f3e9d7;
+  -webkit-text-fill-color: #f3e9d7;
+  background-color: #101820;
+  border-color: rgba(201, 166, 107, 0.85);
+  color-scheme: dark;
+}
+
+html[data-skin="eastern"] .side select option {
+  color: #f3e9d7;
+  background-color: #1a2332;
+}
+
+/* 账本和弹窗是宣纸色。描边按钮、说明和表单字要落到墨色上，不能再用浅字。 */
+html[data-skin="eastern"] .ledger .ghost,
+html[data-skin="eastern"] .modal .ghost {
+  color: #1a2332;
+  -webkit-text-fill-color: #1a2332;
+  border-color: #2f5c4c;
+  background: rgba(255, 252, 246, 0.55);
+}
+
+html[data-skin="eastern"] .ledger .ghost:hover,
+html[data-skin="eastern"] .modal .ghost:hover {
+  color: #1a2332;
+  -webkit-text-fill-color: #1a2332;
+  background: rgba(91, 140, 122, 0.18);
+}
+
+html[data-skin="eastern"] .ledger label,
+html[data-skin="eastern"] .modal .steps,
+html[data-skin="eastern"] .ledger .callout,
+html[data-skin="eastern"] .modal .callout {
+  color: #3f382f;
+}
+
+html[data-skin="eastern"] .ledger select,
+html[data-skin="eastern"] .ledger textarea,
+html[data-skin="eastern"] .ledger input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+html[data-skin="eastern"] .modal select,
+html[data-skin="eastern"] .modal textarea,
+html[data-skin="eastern"] .modal input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+  color: #1a2332;
+  -webkit-text-fill-color: #1a2332;
+  background-color: rgba(255, 252, 246, 0.92);
+  color-scheme: light;
+}
+
+html[data-skin="eastern"] .ledger select option,
+html[data-skin="eastern"] .modal select option {
+  color: #1a2332;
+  background-color: #f3e9d7;
 }
 
 html[data-skin="cyber"] {

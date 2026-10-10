@@ -4,6 +4,7 @@
  */
 
 import { DEFAULT_STAGE_POSE, ensureCharacterPoses } from "./characters.js";
+import { ensureCurrentLocation } from "./scene.js";
 import { DEFAULT_SETTINGS, ensureSettings } from "./settings.js";
 
 export const SEEDED_AT = "2026-10-10T00:00:00.000Z";
@@ -138,7 +139,7 @@ export function createSeedLibrary() {
 
 export function migrateLibrary(raw) {
   if (raw && raw.revision >= 2 && Array.isArray(raw.worldBooks) && Array.isArray(raw.stages)) {
-    return ensureCharacterPoses(ensureSettings(raw));
+    return ensureCurrentLocation(ensureCharacterPoses(ensureSettings(raw)));
   }
   const seed = createSeedLibrary();
   if (raw?.guide) {
