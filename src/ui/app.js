@@ -93,6 +93,7 @@ function render() {
     ${!guideOpen && (!library.stagePicked || forcePicker) ? stagePickerHtml() : ""}
   `;
   bind();
+  settleSprites();
   paintedView = view;
   const ledger = app.querySelector(".ledger");
   const side = app.querySelector(".side");
@@ -177,10 +178,8 @@ function spriteHtml(person, speaker) {
   const src = pictureUrl(person, "fullBody");
   const someoneSpeaking = Boolean(speaker?.id) && speaker.id !== "system";
   const quiet = someoneSpeaking && person.id !== speaker.id;
-  const figure = src
-    ? `<div class="figure figure-art"><img alt="${esc(person.name)}的立绘" src="${esc(src)}" /></div>`
-    : `<div class="figure" style="--accent:${accent(person.id)}"></div>`;
-  return `<div class="sprite ${quiet ? "is-quiet" : "is-speaking"}">${figure}</div>`;
+  const image = src ? `<img alt="${esc(person.name)}的立绘" src="${esc(src)}" />` : "";
+  return `<div class="sprite ${quiet ? "is-quiet" : "is-speaking"}"><div class="figure" style="--accent:${accent(person.id)}">${image}</div></div>`;
 }
 
 function ledgerHtml() {
@@ -708,6 +707,20 @@ function guideModalHtml() {
 function toastHtml() {
   if (!notice) return "";
   return `<p class="toast ${notice.tone === "bad" ? "bad" : ""}" role="status">${esc(notice.text)}</p>`;
+}
+
+function settleSprites() {
+  app.querySelectorAll(".sprite img").forEach((img) => {
+    const reveal = () => img.parentElement?.classList.add("has-art");
+    const hide = () => img.remove();
+    if (img.complete) {
+      if (img.naturalWidth > 0) reveal();
+      else hide();
+    } else {
+      img.addEventListener("load", reveal);
+      img.addEventListener("error", hide);
+    }
+  });
 }
 
 function armToast() {
