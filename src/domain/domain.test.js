@@ -510,6 +510,23 @@ test("提示词带上世界书和刚说的话，钥匙不进界面", () => {
   assert.equal(JSON.stringify(missing).includes("apiKey"), false);
 });
 
+test("保存本机和云端时，提示分开写，并且用对「仍」", () => {
+  const local = dispatch(createSeedLibrary(), { type: "model.update", provider: "local", localModel: "qwen" });
+  assert.equal(local.message, "本地模型已经加载到《剧戏台》中，《剧戏台》仍不会自带任何AI模型。");
+  const cloud = dispatch(createSeedLibrary(), {
+    type: "model.update",
+    provider: "cloud",
+    cloudBaseUrl: "https://api.deepseek.com",
+    cloudModel: "DeepSeek-Flash",
+    cloudApiKey: "dk",
+  });
+  assert.equal(cloud.message, "云端设置已经写在这台电脑上。《剧戏台》仍不会自带任何AI模型。");
+  assert.equal(cloud.message.includes("本地模型已经加载"), false);
+  const zhipu = dispatch(createSeedLibrary(), { type: "model.update", provider: "zhipu", zhipuModel: "glm-4-flash" });
+  assert.match(zhipu.message, /云端设置已经写在这台电脑上/);
+  assert.match(zhipu.message, /仍不会自带任何AI模型/);
+});
+
 test("显存建议提到 canirun，且不承诺代下模型", () => {
   const mid = adviseFromVram(8192);
   const low = adviseFromVram(4096);

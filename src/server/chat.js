@@ -3,8 +3,17 @@
  * 智谱、通义千问和 Ollama 的 OpenAI 兼容地址都走同一条对话接口。
  */
 
-const LOCAL_TIMEOUT_MS = 120_000;
-const CLOUD_TIMEOUT_MS = 45_000;
+const LOCAL_COLD_TIMEOUT_MS = 240_000;
+const LOCAL_WARM_TIMEOUT_MS = 120_000;
+const CLOUD_TIMEOUT_MS = 35_000;
+const EMPTY_RETRY_MS = 12_000;
+
+let localWarmed = false;
+
+export function chatTimeoutMs(target, warmed = localWarmed) {
+  if (target?.apiKey) return CLOUD_TIMEOUT_MS;
+  return warmed ? LOCAL_WARM_TIMEOUT_MS : LOCAL_COLD_TIMEOUT_MS;
+}
 
 export function resolveChatUrl(baseUrl) {
   const root = String(baseUrl || "").trim().replace(/\/$/, "");
@@ -73,8 +82,8 @@ export function explainNetworkError(error, target) {
   const name = error?.name || "";
   if (name === "TimeoutError" || name === "AbortError") {
     return local
-      ? "本机模型想得太久，这次先停下。可以等它空闲后再送一句，或换一个更轻的模型。"
-      : "云端太久没有回应。请检查网络，稍后再试。";
+      ? "本机模型还在加载，或这一次想得太久，先停下了。第一次把模型读进显卡会更慢，和硬件有关。可以再送一句，或换一个更轻的模型。"
+      : "云端太久没有回应。快模型一般不用等这么久。请检查网络和模型名，稍后再送一句。";
   }
   if (local) {
     return "连不上本机 Ollama。请先自己打开 Ollama，地址一般是 http://127.0.0.1:11434 。模型要你自己装，剧戏台不下载。";
@@ -109,39 +118,105 @@ export async function listModels(target, fetchImpl = fetch) {
   return { ok: false, models: [], status: lastStatus, message: lastMessage || "没有读到模型列表。" };
 }
 
+export function looksLikeDeepSeek(target) {
+  const blob = `${target?.baseUrl || ""} ${target?.model || ""}`.toLowerCase();
+  return blob.includes("deepseek");
+}
+
 export async function completeChat(target, messages, fetchImpl = fetch, options = {}) {
   const url = resolveChatUrl(target?.baseUrl);
   if (!url) return { ok: false, message: "模型地址读不懂。请回到「模型」页检查。" };
   if (!target?.model) return { ok: false, message: "还没有填写模型名。" };
-  const headers = { "content-type": "application/json", ...authHeaders(target.apiKey) };
-  const body = JSON.stringify({
-    model: target.model,
-    messages,
-    temperature: 0.8,
-    max_tokens: options.maxTokens || 400,
-    stream: false,
+  if (cloudHostWithoutKey(target)) {
+    return {
+      ok: false,
+      message: "这个地址是云端，还没有钥匙。请到「模型」页选智谱、通义千问或「另一家云端」，粘贴钥匙并保存。剧戏台不附带模型。",
+    };
+  }
+  const now = options.now || Date.now;
+  const started = now();
+  const deepseek = looksLikeDeepSeek(target);
+  let thinkingRejected = false;
+  let result = await requestChat(url, target, messages, fetchImpl, {
+    ...options,
+    stream: true,
+    disableThinking: deepseek,
   });
+  if (!result.ok && result.status === 400) {
+    if (deepseek) thinkingRejected = true;
+    result = await requestChat(url, target, messages, fetchImpl, {
+      ...options,
+      stream: false,
+      disableThinking: false,
+    });
+  }
+  const elapsed = now() - started;
+  if (!result.ok && result.kind === "empty" && elapsed < EMPTY_RETRY_MS) {
+    result = await requestChat(url, target, messages, fetchImpl, {
+      ...options,
+      stream: false,
+      disableThinking: deepseek && !thinkingRejected,
+      maxTokens: options.maxTokens || 400,
+    });
+    if (!result.ok && result.kind === "empty") {
+      return {
+        ok: false,
+        message: "模型没有说出内容。已经自动再问了一次，还是空的。请再送一句，或到「模型」页换一个模型名试试。",
+      };
+    }
+  }
+  if (result.ok) return { ok: true, text: result.text };
+  if (result.kind === "empty") {
+    return {
+      ok: false,
+      message: "模型没有说出内容。这一次等了很久还是空的，没有再自动追问。请再送一句，或到「模型」页换一个模型名试试。",
+    };
+  }
+  return { ok: false, message: result.message || "模型没有接上。请再试一次。" };
+}
+
+async function requestChat(url, target, messages, fetchImpl, options) {
+  const headers = { "content-type": "application/json", ...authHeaders(target.apiKey) };
+  const local = !target.apiKey;
+  const timeout = options.timeoutMs || chatTimeoutMs(target);
   try {
     const response = await fetchImpl(url, {
       method: "POST",
       headers,
-      body,
-      signal: AbortSignal.timeout(target.apiKey ? CLOUD_TIMEOUT_MS : LOCAL_TIMEOUT_MS),
+      body: JSON.stringify(chatBody(target, messages, options)),
+      signal: AbortSignal.timeout(timeout),
     });
+    if (local) localWarmed = true;
     const raw = await response.text();
-    if (!response.ok) return { ok: false, message: explainHttpStatus(response.status, target) };
-    let payload;
-    try {
-      payload = JSON.parse(raw);
-    } catch {
-      return { ok: false, message: "模型回了一段读不懂的内容。请再送一句。" };
+    if (!response.ok) {
+      return { ok: false, kind: "http", status: response.status, message: explainHttpStatus(response.status, target) };
     }
-    const text = extractReply(payload);
-    if (!text) return { ok: false, message: "模型没有说出内容。请再送一句，或换一个模型试试。" };
-    return { ok: true, text };
+    const parsed = parseModelPayload(raw);
+    if (!parsed) return { ok: false, kind: "bad", message: "模型回了一段读不懂的内容。请再送一句。" };
+    if (!parsed.text) return { ok: false, kind: "empty", message: "模型没有说出内容。" };
+    return { ok: true, kind: "ok", text: parsed.text };
   } catch (error) {
-    return { ok: false, message: explainNetworkError(error, target) };
+    if (local) localWarmed = true;
+    return { ok: false, kind: "network", message: explainNetworkError(error, target) };
   }
+}
+
+function chatBody(target, messages, options) {
+  const body = {
+    model: target.model,
+    messages,
+    temperature: 0.8,
+    max_tokens: options.maxTokens || 400,
+    stream: options.stream !== false,
+  };
+  if (options.disableThinking) body.thinking = { type: "disabled" };
+  return body;
+}
+
+function cloudHostWithoutKey(target) {
+  if (target?.apiKey) return false;
+  const host = String(target?.baseUrl || "").toLowerCase();
+  return /api\.deepseek\.com|openai\.com|bigmodel\.cn|dashscope\.aliyuncs\.com/.test(host);
 }
 
 export async function probeBackend(target, fetchImpl = fetch, okMessage) {
@@ -177,12 +252,54 @@ function authHeaders(apiKey) {
   return { authorization: `Bearer ${apiKey}` };
 }
 
-function extractReply(payload) {
-  const choice = payload?.choices?.[0]?.message;
-  let content = choice?.content;
-  if (Array.isArray(content)) {
-    content = content.map((part) => part?.text || part?.content || "").join("");
+function parseModelPayload(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return { text: "" };
+  if (text.startsWith("{") || text.startsWith("[")) {
+    try {
+      return { text: extractReply(JSON.parse(text)) };
+    } catch {
+      return null;
+    }
   }
-  if (!content && payload?.message?.content) content = payload.message.content;
-  return String(content || "").trim();
+  if (text.startsWith("data:")) return parseEventStream(text);
+  return null;
+}
+
+function parseEventStream(raw) {
+  let content = "";
+  for (const line of raw.split(/\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const data = trimmed.slice(5).trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      content += extractPiece(JSON.parse(data));
+    } catch {
+      // 跳过一行读不懂的片段，后面可能还有台词。
+    }
+  }
+  return { text: content.trim() };
+}
+
+function extractReply(payload) {
+  return extractPiece(payload).trim();
+}
+
+function extractPiece(payload) {
+  const choice = payload?.choices?.[0];
+  const message = choice?.message || {};
+  const delta = choice?.delta || {};
+  let content =
+    delta.content ??
+    message.content ??
+    choice?.text ??
+    payload?.output_text ??
+    payload?.message?.content ??
+    payload?.response ??
+    "";
+  if (Array.isArray(content)) {
+    content = content.map((part) => (typeof part === "string" ? part : part?.text || part?.content || "")).join("");
+  }
+  return String(content || "");
 }

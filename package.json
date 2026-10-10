@@ -1,7 +1,7 @@
 {
   "name": "playstage",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "剧戏台 — 本地优先的多角色文字演戏",
   "type": "module",
   "engines": {
@@ -9,8 +9,8 @@
   },
   "scripts": {
     "start": "node src/server/index.js",
-    "test": "node --test src/domain/*.test.js src/server/*.test.js",
-    "check": "node scripts/check-boundaries.js && node --test src/domain/*.test.js src/server/*.test.js",
+    "test": "node --test src/domain/*.test.js src/server/*.test.js src/ui/*.test.js",
+    "check": "node scripts/check-boundaries.js && node --test src/domain/*.test.js src/server/*.test.js src/ui/*.test.js",
     "manifest": "node scripts/write-update-manifest.js"
   }
 }

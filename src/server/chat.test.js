@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
-import { completeChat, explainHttpStatus, parseModelList, resolveChatUrl, resolveModelListUrls } from "./chat.js";
+import {
+  chatTimeoutMs,
+  completeChat,
+  explainHttpStatus,
+  looksLikeDeepSeek,
+  parseModelList,
+  resolveChatUrl,
+  resolveModelListUrls,
+} from "./chat.js";
 
 test("对话地址认得出 Ollama、智谱和千问", () => {
   assert.equal(resolveChatUrl("http://127.0.0.1:11434"), "http://127.0.0.1:11434/v1/chat/completions");
@@ -22,6 +30,13 @@ test("对话地址认得出 Ollama、智谱和千问", () => {
     "http://127.0.0.1:11434/v1/models",
     "http://127.0.0.1:11434/api/tags",
   ]);
+  assert.equal(resolveChatUrl("https://api.deepseek.com"), "https://api.deepseek.com/v1/chat/completions");
+  assert.equal(resolveChatUrl("https://api.deepseek.com/v1"), "https://api.deepseek.com/v1/chat/completions");
+  assert.equal(looksLikeDeepSeek({ baseUrl: "https://api.example.com/v1", model: "DeepSeek-Flash" }), true);
+  assert.equal(looksLikeDeepSeek({ baseUrl: "http://127.0.0.1:11434/v1", model: "qwen" }), false);
+  assert.ok(chatTimeoutMs({ apiKey: "" }, false) > chatTimeoutMs({ apiKey: "" }, true));
+  assert.ok(chatTimeoutMs({ apiKey: "" }, false) < 10 * 60_000);
+  assert.ok(chatTimeoutMs({ apiKey: "k" }) < 60_000);
 });
 
 test("模型列表能读 OpenAI 和 Ollama 两种形状", () => {
@@ -61,7 +76,8 @@ test("completeChat 会把台词从兼容接口里取出来", async () => {
     assert.equal(seen.url, "/v1/chat/completions");
     assert.equal(seen.auth, "");
     assert.equal(seen.body.model, "qwen-local");
-    assert.equal(seen.body.stream, false);
+    assert.equal(seen.body.stream, true);
+    assert.equal(seen.body.thinking, undefined);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -76,5 +92,112 @@ test("钥匙错误时不会抛出，而是一句中文", async () => {
     text: async () => "",
   }));
   assert.equal(result.ok, false);
+  assert.match(result.message, /钥匙/);
+});
+
+test("流式片段能拼成一句台词", async () => {
+  const result = await completeChat(
+    { baseUrl: "http://127.0.0.1:9/v1", model: "qwen-plus", apiKey: "k" },
+    [{ role: "user", content: "你好" }],
+    async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "能，" } }] })}`,
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "门还没关。" } }] })}`,
+          "data: [DONE]",
+        ].join("\n"),
+    }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.text, "能，门还没关。");
+});
+
+test("DeepSeek 空内容会再问一次，并关掉思考", async () => {
+  const bodies = [];
+  const result = await completeChat(
+    { baseUrl: "https://api.deepseek.com/v1", model: "DeepSeek-Flash", apiKey: "dk" },
+    [{ role: "user", content: "现在是什么情况？" }],
+    async (_url, init) => {
+      const body = JSON.parse(init.body);
+      bodies.push(body);
+      if (bodies.length === 1) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ choices: [{ message: { content: "", reasoning_content: "先想一想" } }] }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ choices: [{ message: { content: "门还开着。" } }] }),
+      };
+    },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.text, "门还开着。");
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].stream, true);
+  assert.deepEqual(bodies[0].thinking, { type: "disabled" });
+  assert.equal(bodies[1].stream, false);
+  assert.deepEqual(bodies[1].thinking, { type: "disabled" });
+});
+
+test("等太久的空回复不再追问第二次", async () => {
+  let calls = 0;
+  let clock = 0;
+  const result = await completeChat(
+    { baseUrl: "https://api.deepseek.com/v1", model: "DeepSeek-Flash", apiKey: "dk" },
+    [{ role: "user", content: "在吗" }],
+    async () => {
+      calls += 1;
+      clock += 20_000;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: null } }] }) };
+    },
+    { now: () => clock },
+  );
+  assert.equal(calls, 1);
+  assert.equal(result.ok, false);
+  assert.match(result.message, /没有再自动追问/);
+});
+
+test("思考字段被拒绝时退回普通请求", async () => {
+  const bodies = [];
+  const result = await completeChat(
+    { baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "dk" },
+    [{ role: "user", content: "你好" }],
+    async (_url, init) => {
+      const body = JSON.parse(init.body);
+      bodies.push(body);
+      if (body.thinking) {
+        return { ok: false, status: 400, text: async () => "" };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ choices: [{ message: { content: [{ type: "text", text: "炉火还在。" }] } }] }),
+      };
+    },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.text, "炉火还在。");
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[1].thinking, undefined);
+  assert.equal(bodies[1].stream, false);
+});
+
+test("云端地址没带钥匙时不等超时", async () => {
+  let calls = 0;
+  const result = await completeChat(
+    { baseUrl: "https://api.deepseek.com/v1", model: "DeepSeek-Flash", apiKey: "" },
+    [{ role: "user", content: "你好" }],
+    async () => {
+      calls += 1;
+      return { ok: true, status: 200, text: async () => "" };
+    },
+  );
+  assert.equal(calls, 0);
   assert.match(result.message, /钥匙/);
 });

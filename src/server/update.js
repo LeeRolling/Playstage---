@@ -12,7 +12,7 @@ import path from "node:path";
 export const UPDATE_REPO = "LeeRolling/Playstage---";
 export const UPDATE_REF = "main";
 
-const ROOT_FILES = ["package.json", "VERSION", "start.bat", "start.sh", "README.md", ".gitignore"];
+const ROOT_FILES = ["package.json", "VERSION", "start.bat", "start.sh", "check.bat", "README.md", ".gitignore"];
 const ROOT_DIRS = ["src", "scripts", "docs", "assets"];
 const BLOCKED_ROOTS = new Set(["data", "node_modules", ".git", ".update-staging"]);
 
