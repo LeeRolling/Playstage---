@@ -615,8 +615,8 @@ function sideHtml(session) {
            </div>`
         : `<button class="primary" type="button" data-open-picker>选一座舞台</button>`
     }
-    ${scaleControlsHtml()}
     ${skinControlsHtml()}
+    ${scaleControlsHtml()}
     <h2 style="margin-top:18px">发言</h2>
     <div class="stack">
       ${["turn", "interrupt", "direct"]
