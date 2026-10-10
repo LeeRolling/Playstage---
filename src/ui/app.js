@@ -310,6 +310,12 @@ function worldHtml() {
   `;
 }
 
+function locationPath(label, file) {
+  const shown = file ? esc(file) : "还没有";
+  const title = file ? ` title="${esc(file)}"` : "";
+  return `<p class="location-path"${title}>${label}：${shown}</p>`;
+}
+
 function locationCard(place) {
   const day = pictureOfLocation(place, "day");
   const night = pictureOfLocation(place, "night");
@@ -322,20 +328,24 @@ function locationCard(place) {
     )
     .join("");
   return `
-    <div class="portrait-row">
-      ${day ? `<img class="thumb wide" alt="" src="${esc(day)}" />` : `<div class="thumb wide"></div>`}
-      ${night ? `<img class="thumb wide" alt="" src="${esc(night)}" />` : `<div class="thumb wide"></div>`}
-      <div>
-        <b>${esc(place.name)}</b>
-        <p class="help">白天：${place.imageFile ? esc(place.imageFile) : "还没有"}</p>
-        <p class="help">夜晚：${place.nightImageFile ? esc(place.nightImageFile) : "还没有"}</p>
-        <label>换白天的图</label>
-        <input type="file" accept="image/*" data-crop="location-day" data-location-id="${esc(place.id)}" />
-        <label>换夜晚的图</label>
-        <input type="file" accept="image/*" data-crop="location-night" data-location-id="${esc(place.id)}" />
-        ${triggers}
+    <article class="location-card">
+      <b class="location-name">${esc(place.name)}</b>
+      <div class="location-pairs">
+        <div class="location-slot">
+          ${day ? `<img class="thumb wide" alt="" src="${esc(day)}" />` : `<div class="thumb wide" aria-hidden="true"></div>`}
+          ${locationPath("白天", place.imageFile)}
+          <label>换白天的图</label>
+          <input type="file" accept="image/*" data-crop="location-day" data-location-id="${esc(place.id)}" />
+        </div>
+        <div class="location-slot">
+          ${night ? `<img class="thumb wide" alt="" src="${esc(night)}" />` : `<div class="thumb wide" aria-hidden="true"></div>`}
+          ${locationPath("夜晚", place.nightImageFile)}
+          <label>换夜晚的图</label>
+          <input type="file" accept="image/*" data-crop="location-night" data-location-id="${esc(place.id)}" />
+        </div>
       </div>
-    </div>`;
+      ${triggers}
+    </article>`;
 }
 
 function cardsHtml() {
@@ -691,6 +701,7 @@ function skinHelpHtml() {
       <p>常用的名字：</p>
       <p><code>--bg</code> 整页底色。<code>--paper</code> 平时的字。<code>--gold</code> 强调色。<code>--dialog-bg</code> 对话框的底。<code>--dialog-ink</code> 对话框里的字。<code>--name-ink</code> 说话人的名字，<code>--name-chip</code> 是名字后面的色块（不需要就写成 transparent）。<code>--button-bg</code> 和 <code>--button-ink</code> 是按钮的底和字。</p>
       <p>这一版的边角花纹是样式画的，不用准备图片。以后若要换成自己的角花，把图放进 <code>assets/skins/eastern/</code>、<code>assets/skins/cyber/</code> 或 <code>assets/skins/nordic/</code>。更直白的步骤写在 <code>docs/自定义皮肤.md</code>。</p>
+      <p>实在自己改不了，就让 AI 帮你：把 <code>docs/皮肤制作-给AI.md</code> 整篇交给它，或告诉它这个文件在哪。</p>
     </div>
   `;
 }
