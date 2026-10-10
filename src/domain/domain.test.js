@@ -5,7 +5,8 @@ import { adviseFromVram, describePrerequisites } from "./guide.js";
 import { createSeedLibrary, migrateLibrary } from "./library.js";
 import { LOCAL_CONNECTED_NOTE, armModelRetest } from "./models.js";
 import { resolveScene } from "./scene.js";
-import { dispatch, sessionForm } from "./index.js";
+import { dispatch, sessionForm, toPublicLibrary } from "./index.js";
+import { resolveUiSkin } from "./settings.js";
 
 test("开局有三本世界书，一场戏还没把九个人请上台", () => {
   const library = createSeedLibrary();
@@ -344,16 +345,98 @@ test("旧资料库补上显示偏好，不冲掉已经写好的舞台", () => {
     ...kept,
     settings: { spriteScale: "medium", dialogScale: "tall", note: "留着" },
   };
-  const same = migrateLibrary(chosen);
-  assert.equal(same, chosen);
+  const filledSkin = migrateLibrary(chosen);
+  assert.notEqual(filledSkin, chosen);
+  assert.equal(filledSkin.settings.spriteScale, "medium");
+  assert.equal(filledSkin.settings.dialogScale, "tall");
+  assert.equal(filledSkin.settings.note, "留着");
+  assert.equal(filledSkin.settings.uiSkin, "classic");
+  assert.equal(filledSkin.settings.uiSkinMode, "auto");
+  assert.equal(filledSkin.worldBooks[0].name, "保留这本书");
+  assert.equal(filledSkin.stagePicked, true);
+
+  const complete = {
+    ...kept,
+    settings: { spriteScale: "medium", dialogScale: "tall", uiSkin: "cyber", uiSkinMode: "manual", note: "留着" },
+  };
+  const same = migrateLibrary(complete);
+  assert.equal(same, complete);
   assert.equal(same.settings.spriteScale, "medium");
   assert.equal(same.settings.dialogScale, "tall");
+  assert.equal(same.settings.uiSkin, "cyber");
   assert.equal(same.settings.note, "留着");
 
   const broken = migrateLibrary({ ...kept, settings: { spriteScale: "nope" } });
   assert.equal(broken.settings.spriteScale, "large");
   assert.equal(broken.settings.dialogScale, "short");
+  assert.equal(broken.settings.uiSkin, "classic");
+  assert.equal(broken.settings.uiSkinMode, "auto");
   assert.equal(broken.worldBooks[0].name, "保留这本书");
+});
+
+test("皮肤默认跟随舞台，换舞台会换样子，手动选择会留下来", () => {
+  const seeded = createSeedLibrary();
+  assert.equal(seeded.settings.uiSkin, "classic");
+  assert.equal(seeded.settings.uiSkinMode, "auto");
+  assert.equal(resolveUiSkin(seeded), "classic");
+  assert.equal(seeded.stages.find((item) => item.id === "stage-azure").skinId, "eastern");
+  assert.equal(seeded.stages.find((item) => item.id === "stage-neon").skinId, "cyber");
+  assert.equal(seeded.stages.find((item) => item.id === "stage-frost").skinId, "nordic");
+
+  const azure = dispatch(seeded, { type: "stage.select", stageId: "stage-azure" }).library;
+  assert.equal(resolveUiSkin(azure), "eastern");
+  assert.equal(toPublicLibrary(azure).view.skin.id, "eastern");
+  assert.equal(toPublicLibrary(azure).view.skin.mode, "auto");
+  assert.equal(toPublicLibrary(azure).view.skins.length, 4);
+
+  const neon = dispatch(seeded, { type: "stage.select", stageId: "stage-neon" }).library;
+  assert.equal(resolveUiSkin(neon), "cyber");
+  const frost = dispatch(seeded, { type: "stage.select", stageId: "stage-frost" }).library;
+  assert.equal(resolveUiSkin(frost), "nordic");
+
+  const manual = dispatch(frost, { type: "settings.update", uiSkin: "classic", uiSkinMode: "manual" });
+  assert.equal(manual.library.settings.uiSkin, "classic");
+  assert.equal(manual.library.settings.uiSkinMode, "manual");
+  assert.equal(manual.library.settings.spriteScale, "large");
+  assert.equal(manual.library.settings.dialogScale, "short");
+  assert.match(manual.message, /皮肤已留在这台电脑上/);
+  assert.equal(resolveUiSkin(manual.library), "classic");
+
+  const switched = dispatch(manual.library, { type: "stage.select", stageId: "stage-azure" }).library;
+  assert.equal(switched.activeStageId, "stage-azure");
+  assert.equal(switched.settings.uiSkin, "classic");
+  assert.equal(switched.settings.uiSkinMode, "manual");
+  assert.equal(resolveUiSkin(switched), "classic");
+
+  const onlySkin = dispatch(azure, { type: "settings.update", uiSkin: "nordic" }).library;
+  assert.equal(onlySkin.settings.uiSkinMode, "manual");
+  assert.equal(resolveUiSkin(onlySkin), "nordic");
+
+  const again = dispatch(switched, { type: "settings.update", uiSkinMode: "auto" });
+  assert.match(again.message, /跟着当前舞台/);
+  assert.equal(again.library.settings.uiSkin, "classic");
+  assert.equal(resolveUiSkin(again.library), "eastern");
+
+  const restarted = dispatch(manual.library, { type: "run.start", stageId: "stage-neon" }).library;
+  assert.equal(restarted.settings.uiSkin, "classic");
+  assert.equal(restarted.settings.uiSkinMode, "manual");
+  assert.equal(resolveUiSkin(restarted), "classic");
+
+  const follow = dispatch(restarted, { type: "settings.update", uiSkinMode: "auto" }).library;
+  assert.equal(resolveUiSkin(follow), "cyber");
+  const cleared = dispatch(follow, { type: "run.begin" }).library;
+  assert.equal(resolveUiSkin(cleared), "classic");
+
+  const legacy = {
+    ...createSeedLibrary(),
+    stagePicked: true,
+    activeStageId: "stage-neon",
+    stages: createSeedLibrary().stages.map(({ skinId, ...rest }) => rest),
+  };
+  assert.equal(resolveUiSkin(legacy), "cyber");
+
+  assert.throws(() => dispatch(seeded, { type: "settings.update", uiSkin: "pastel" }), /没有这套皮肤/);
+  assert.throws(() => dispatch(seeded, { type: "settings.update", uiSkinMode: "sometimes" }), /跟随舞台/);
 });
 
 test("种子文件与开局数据一致", () => {

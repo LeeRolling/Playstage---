@@ -7,6 +7,7 @@
       "id": "stage-frost",
       "name": "霜印王国",
       "tone": "北欧",
+      "skinId": "nordic",
       "folder": "北欧",
       "worldBookId": "book-frost",
       "characterIds": [
@@ -20,6 +21,7 @@
       "id": "stage-azure",
       "name": "青玄界",
       "tone": "东方仙侠",
+      "skinId": "eastern",
       "folder": "东方",
       "worldBookId": "book-azure",
       "characterIds": [
@@ -33,6 +35,7 @@
       "id": "stage-neon",
       "name": "霓穹市",
       "tone": "赛博",
+      "skinId": "cyber",
       "folder": "现代",
       "worldBookId": "book-neon",
       "characterIds": [
@@ -569,6 +572,8 @@
   },
   "settings": {
     "spriteScale": "large",
-    "dialogScale": "short"
+    "dialogScale": "short",
+    "uiSkin": "classic",
+    "uiSkinMode": "auto"
   }
 }

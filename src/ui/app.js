@@ -40,6 +40,7 @@ let pickerIntent = "";
 let bookFocus = "";
 let paintedView = null;
 let toastTimer = 0;
+let pendingAnchor = "";
 const previews = new Map();
 const sceneCache = new Map();
 
@@ -62,6 +63,8 @@ async function boot() {
 
 function render() {
   if (!library) return;
+  const skin = currentSkin();
+  document.documentElement.dataset.skin = skin.id;
   const session = library.sessions[0];
   const scene = library.view.scene;
   const sceneUrl = mediaUrl(scene.imageFile);
@@ -74,7 +77,7 @@ function render() {
   const spritePreset = presetOf(SPRITE_PRESETS, library.settings?.spriteScale, "large");
   const dialogPreset = presetOf(DIALOG_PRESETS, library.settings?.dialogScale, "short");
   app.innerHTML = `
-    <div class="shell">
+    <div class="shell" data-skin="${esc(skin.id)}">
       <header class="topbar">
         <div class="mark">
           <h1>剧戏台</h1>
@@ -82,6 +85,7 @@ function render() {
         </div>
         <div class="pills">
           <span class="pill">${esc(scene.stageName || "未选舞台")}</span>
+          <span class="pill">${esc(skin.mode === "manual" ? `${skin.name} · 手动` : skin.name)}</span>
           <span class="pill">${esc(library.view.formLabel)}</span>
           <span class="pill">${esc(library.view.speakModeLabel)}</span>
           <span class="pill">${esc(scene.locationName)}${scene.timeOfDay === "night" ? " · 夜晚" : ""}</span>
@@ -119,10 +123,18 @@ function render() {
       if (ledger?.isConnected) ledger.scrollTop = ledgerScroll;
       if (side?.isConnected) side.scrollTop = sideScroll;
       window.scrollTo(0, windowScroll);
+      revealAnchor();
     });
   }
   const lines = app.querySelector(".lines");
   if (lines) lines.scrollTop = lines.scrollHeight;
+  const anchorId = pendingAnchor;
+  pendingAnchor = "";
+  const revealAnchor = () => {
+    if (!anchorId) return;
+    document.getElementById(anchorId)?.scrollIntoView({ block: "start" });
+  };
+  revealAnchor();
   const field = app.querySelector("#say");
   if (field && view === "stage" && !guideOpen && library.stagePicked && !forcePicker) field.focus({ preventScroll: true });
   armToast();
@@ -134,7 +146,7 @@ function stageHtml(session, scene, sceneUrl) {
   const speaker = currentSpeaker(session);
   return `
     <div class="plaque"><span>${esc(scene.stageName || "选择舞台")}</span><strong>${esc(scene.locationName)}</strong></div>
-    <div class="stage-scale">${scaleControlsHtml()}</div>
+    <div class="stage-scale">${scaleControlsHtml()}${skinControlsHtml()}</div>
     ${ribbonHtml(scene, missingFile)}
     <div class="sprites">
       ${cast
@@ -158,7 +170,7 @@ function stageHtml(session, scene, sceneUrl) {
             .map(
               (line) => `
               <article class="line ${esc(line.kind)}">
-                <div class="line-name" style="color:${line.kind === "system" ? "" : accent(line.speakerId)}">${esc(line.speakerName)}</div>
+                <div class="line-name" style="${skinNameStyle(line)}">${esc(line.speakerName)}</div>
                 <p>${esc(line.text)}</p>
               </article>`,
             )
@@ -565,6 +577,7 @@ function guidePageHtml() {
   return `
     <h2>新手引导</h2>
     <p class="help">给完全没配过模型的人。剧戏台检测显存和本机推理软件，只是为了说明方向，不会替你下载任何模型。</p>
+    ${skinHelpHtml()}
     <div class="block">
       <h3>先看这台电脑</h3>
       <p>${esc(prerequisites?.node || "你能看见这个页面，说明 Node.js 已经在跑。")}</p>
@@ -602,6 +615,7 @@ function sideHtml(session) {
            </div>`
         : `<button class="primary" type="button" data-open-picker>选一座舞台</button>`
     }
+    ${skinControlsHtml()}
     ${scaleControlsHtml()}
     <h2 style="margin-top:18px">发言</h2>
     <div class="stack">
@@ -649,6 +663,56 @@ function scaleControlsHtml() {
     <p class="help">点一下就换。这个选择会留在这台电脑上，关掉再打开还在。</p>
     </div>
   `;
+}
+
+function skinControlsHtml() {
+  const skin = currentSkin();
+  const skins = library.view?.skins || [];
+  return `
+    <div class="scale-block">
+      <h2>皮肤</h2>
+      <div class="skin-row" role="group" aria-label="界面皮肤">
+        <button type="button" class="mode" data-set-skin-mode="auto" aria-pressed="${skin.mode === "auto" ? "true" : "false"}">跟随舞台</button>
+        ${skins
+          .map(
+            (item) =>
+              `<button type="button" class="mode" data-set-skin="${esc(item.id)}" aria-pressed="${skin.mode === "manual" && skin.chosen === item.id ? "true" : "false"}">${esc(item.name)}</button>`,
+          )
+          .join("")}
+      </div>
+      <p class="help skin-note">现在是「${esc(skin.name)}」。跟随舞台时，青玄界用东方，霓穹市用赛博，霜印王国用北欧。点某一套就会一直用，直到你再改。</p>
+      <button class="ghost" type="button" data-skin-help>怎么自己改皮肤</button>
+    </div>
+  `;
+}
+
+function skinHelpHtml() {
+  return `
+    <div class="block" id="skin-help">
+      <h3>界面皮肤</h3>
+      <p>剧戏台带了四套样子：经典、东方 · 青玄、赛博 · 霓穹、北欧 · 霜印。</p>
+      <p>选一座舞台时，如果皮肤是「跟随舞台」，样子会自己换：青玄界是东方，霓穹市是赛博，霜印王国是北欧。还没选舞台，或这座没有单独的样子时，用经典。</p>
+      <p>想固定某一种：在右侧「皮肤」里点名字。这个选择写在这台电脑上，关掉再打开还在。想恢复自动，再点「跟随舞台」。</p>
+      <h3>想自己调一调</h3>
+      <p>不用会写程序。颜色都写在一个样式文件里，每个以两个短横开头的名字管一块地方。改完保存，刷新这个页面就能看见。</p>
+      <p>文件在 <code>src/ui/styles.css</code>。先看最上面那一组名字，再看文件后部写着 <code>data-skin</code> 的四段：<code>classic</code> 是经典（就用最上面那组），<code>eastern</code> 东方，<code>cyber</code> 赛博，<code>nordic</code> 北欧。</p>
+      <p>常用的名字：</p>
+      <p><code>--bg</code> 整页底色。<code>--paper</code> 平时的字。<code>--gold</code> 强调色。<code>--dialog-bg</code> 对话框的底。<code>--dialog-ink</code> 对话框里的字。<code>--name-ink</code> 说话人的名字，<code>--name-chip</code> 是名字后面的色块（不需要就写成 transparent）。<code>--button-bg</code> 和 <code>--button-ink</code> 是按钮的底和字。</p>
+      <p>这一版的边角花纹是样式画的，不用准备图片。以后若要换成自己的角花，把图放进 <code>assets/skins/eastern/</code>、<code>assets/skins/cyber/</code> 或 <code>assets/skins/nordic/</code>。更直白的步骤写在 <code>docs/自定义皮肤.md</code>。</p>
+    </div>
+  `;
+}
+
+function currentSkin() {
+  return library.view?.skin?.id
+    ? library.view.skin
+    : { id: "classic", name: "经典", mode: "auto", chosen: "classic" };
+}
+
+function skinNameStyle(line) {
+  if (line.kind === "system") return "";
+  if (currentSkin().id !== "classic") return "";
+  return `color:${accent(line.speakerId)}`;
 }
 
 function presetOf(list, id, fallback) {
@@ -728,7 +792,7 @@ function continueSavesHtml() {
 function guideModalHtml() {
   const advice = hardware?.advice;
   const pages = [
-    `<h2>欢迎来到剧戏台</h2><p>这是装在你自己电脑上的演戏工具。故事、人设和存档都留在本地。软件本身不带 AI 模型。</p><p>开场要先选一座舞台：霜印王国、青玄界，或霓穹市。一座舞台三位角色。</p>`,
+    `<h2>欢迎来到剧戏台</h2><p>这是装在你自己电脑上的演戏工具。故事、人设和存档都留在本地。软件本身不带 AI 模型。</p><p>开场要先选一座舞台：霜印王国、青玄界，或霓穹市。一座舞台三位角色。选中之后，界面样子会跟着那座舞台走，也可以在旁边自己换。</p>`,
     `<h2>这台电脑</h2><p>${esc(prerequisites?.node || "你能看见这个页面，说明 Node.js 已经在跑。这一项不用再检查。")}</p><p>${esc(prerequisites?.ollama || "本机推理软件稍后再测也行。")}</p>`,
     `<h2>${esc(advice?.title || "看看显存")}</h2><p>${esc(advice?.body || "")}</p><p>大约 8GB 显存，通常可以找适合这个量级的开源文本模型。大约 4GB 也有更轻的模型，但体验有限。</p>`,
     `<h2>自己查一下显卡</h2><p>请打开 <a href="https://www.canirun.ai/models" target="_blank" rel="noreferrer">https://www.canirun.ai/models</a> ，按你的显卡看适合哪些模型。</p><p>如果没有合适的，也不用着急。可以改用你自己的云端接口，或先用轻一点的本地模型。剧戏台不提供、也不下载模型。</p>`,
@@ -859,6 +923,27 @@ function bind() {
     button.addEventListener("click", () => {
       if (button.getAttribute("aria-pressed") === "true") return;
       act({ type: "settings.update", dialogScale: button.dataset.setDialog });
+    });
+  });
+  app.querySelectorAll("[data-set-skin-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.getAttribute("aria-pressed") === "true") return;
+      act({ type: "settings.update", uiSkinMode: button.dataset.setSkinMode });
+    });
+  });
+  app.querySelectorAll("[data-set-skin]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.getAttribute("aria-pressed") === "true") return;
+      act({ type: "settings.update", uiSkin: button.dataset.setSkin, uiSkinMode: "manual" });
+    });
+  });
+  app.querySelectorAll("[data-skin-help]").forEach((button) => {
+    button.addEventListener("click", () => {
+      view = "guide";
+      location.hash = "guide";
+      pendingAnchor = "skin-help";
+      notice = null;
+      render();
     });
   });
   app.querySelectorAll("[data-time]").forEach((button) => {
