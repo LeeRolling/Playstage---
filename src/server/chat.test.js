@@ -7,6 +7,7 @@ import {
   explainHttpStatus,
   looksLikeDeepSeek,
   parseModelList,
+  probeLocalReady,
   resolveChatUrl,
   resolveModelListUrls,
 } from "./chat.js";
@@ -186,6 +187,27 @@ test("思考字段被拒绝时退回普通请求", async () => {
   assert.equal(bodies.length, 2);
   assert.equal(bodies[1].thinking, undefined);
   assert.equal(bodies[1].stream, false);
+});
+
+test("本机探测能分出连不上和没装上", async () => {
+  const ready = await probeLocalReady({ baseUrl: "http://127.0.0.1:9/v1", model: "qwen2.5" }, async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ models: [{ name: "qwen2.5:latest" }] }),
+  }));
+  assert.equal(ready.ok, true);
+  const missing = await probeLocalReady({ baseUrl: "http://127.0.0.1:9/v1", model: "missing" }, async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ models: [{ name: "qwen2.5:latest" }] }),
+  }));
+  assert.equal(missing.ok, false);
+  assert.equal(missing.reason, "missing");
+  const down = await probeLocalReady({ baseUrl: "http://127.0.0.1:9/v1", model: "qwen" }, async () => {
+    throw new Error("offline");
+  });
+  assert.equal(down.ok, false);
+  assert.equal(down.reason, "unreachable");
 });
 
 test("云端地址没带钥匙时不等超时", async () => {

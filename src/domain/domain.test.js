@@ -3,7 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import { adviseFromVram, describePrerequisites } from "./guide.js";
 import { createSeedLibrary, migrateLibrary } from "./library.js";
-import { LOCAL_CONNECTED_NOTE, actingTarget, armModelRetest } from "./models.js";
+import { LOCAL_CONNECTED_NOTE, actingTarget, armModelRetest, localRouteProbe } from "./models.js";
 import { resolveScene } from "./scene.js";
 import { buildActingMessages, commitNpcReply, dispatch, finishCoolDown, planSpeakers, sessionForm, toPublicLibrary } from "./index.js";
 import { resolveUiSkin } from "./settings.js";
@@ -510,6 +510,102 @@ test("提示词带上世界书和刚说的话，钥匙不进界面", () => {
   assert.equal(JSON.stringify(missing).includes("apiKey"), false);
 });
 
+test("清掉本机模型后自动改用另一家，不再逼着去选本机", () => {
+  let library = dispatch(createSeedLibrary(), {
+    type: "model.update",
+    routeMode: "auto",
+    provider: "local",
+    localModel: "",
+    cloudBaseUrl: "https://api.deepseek.com/v1",
+    cloudModel: "deepseek-chat",
+    cloudApiKey: "dk-secret",
+  }).library;
+  const target = actingTarget(library);
+  assert.equal(target.ok, true);
+  assert.equal(target.provider, "cloud");
+  assert.equal(target.baseUrl, "https://api.deepseek.com/v1");
+  assert.equal(target.model, "deepseek-chat");
+  assert.equal(target.apiKey, "dk-secret");
+  assert.equal(target.label, "DeepSeek");
+  assert.match(target.notice, /改用云端「DeepSeek」/);
+  assert.equal(target.notice.includes("读取本机模型"), false);
+  assert.equal(target.notice.includes("还没有选择本机模型"), false);
+  const hinted = toPublicLibrary(library).model;
+  assert.equal(hinted.routeMode, "auto");
+  assert.match(hinted.routeHint, /DeepSeek/);
+  assert.equal(JSON.stringify(hinted).includes("dk-secret"), false);
+
+  const kept = dispatch(library, { type: "model.update", localModel: "qwen-local" }).library;
+  assert.equal(actingTarget(kept).provider, "local");
+  const down = actingTarget(kept, { localReachable: false, localReason: "unreachable" });
+  assert.equal(down.label, "DeepSeek");
+  assert.match(down.notice, /连不上/);
+  const uninstalled = actingTarget(kept, { localReachable: false, localReason: "missing" });
+  assert.match(uninstalled.notice, /没有这个模型/);
+
+  const forced = dispatch(library, { type: "model.update", routeMode: "local", localModel: "" }).library;
+  const blocked = actingTarget(forced);
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.message, /读取本机模型/);
+
+  const cloudOnly = dispatch(kept, { type: "model.update", routeMode: "cloud" }).library;
+  const forcedCloud = actingTarget(cloudOnly, { localReachable: true });
+  assert.equal(forcedCloud.provider, "cloud");
+  assert.equal(forcedCloud.model, "deepseek-chat");
+  assert.equal(forcedCloud.notice, undefined);
+
+  const none = actingTarget(createSeedLibrary());
+  assert.equal(none.ok, false);
+  assert.match(none.message, /本机模型/);
+  assert.equal(none.message.includes("读取本机模型"), false);
+  assert.throws(() => dispatch(createSeedLibrary(), { type: "model.update", routeMode: "both" }), /自动/);
+  const saved = dispatch(createSeedLibrary(), { type: "model.update", routeMode: "auto", provider: "local" });
+  assert.match(saved.message, /自动接话/);
+  assert.equal(localRouteProbe(createSeedLibrary()), null);
+  assert.equal(localRouteProbe(kept).model, "qwen-local");
+  assert.equal(localRouteProbe(cloudOnly), null);
+});
+
+test("自动时勾了智谱就用智谱，没勾就用另一家留下的接口", () => {
+  let library = dispatch(createSeedLibrary(), {
+    type: "model.update",
+    routeMode: "auto",
+    provider: "zhipu",
+    localModel: "",
+    zhipuModel: "glm-4-flash",
+    zhipuApiKey: "zk",
+    cloudBaseUrl: "https://api.deepseek.com",
+    cloudModel: "deepseek-chat",
+    cloudApiKey: "dk",
+  }).library;
+  const zhipu = actingTarget(library);
+  assert.equal(zhipu.label, "智谱");
+  assert.equal(zhipu.model, "glm-4-flash");
+  assert.equal(zhipu.notice, undefined);
+
+  library = dispatch(library, { type: "model.update", provider: "local" }).library;
+  const extra = actingTarget(library);
+  assert.equal(extra.label, "DeepSeek");
+  assert.match(extra.notice, /还没有选模型/);
+
+  const slotted = createSeedLibrary();
+  slotted.model.localModel = "";
+  slotted.model.cloudSlots.push({
+    id: "slot-deepseek",
+    label: "DeepSeek",
+    vendor: "custom",
+    baseUrl: "https://api.deepseek.com/v1",
+    model: "DeepSeek-Flash",
+    apiKey: "slot-dk",
+    characterIds: [],
+  });
+  const fromSlot = actingTarget(slotted);
+  assert.equal(fromSlot.ok, true);
+  assert.equal(fromSlot.model, "DeepSeek-Flash");
+  assert.equal(fromSlot.baseUrl, "https://api.deepseek.com/v1");
+  assert.equal(fromSlot.apiKey, "slot-dk");
+});
+
 test("保存本机和云端时，提示分开写，并且用对「仍」", () => {
   const local = dispatch(createSeedLibrary(), { type: "model.update", provider: "local", localModel: "qwen" });
   assert.equal(local.message, "本地模型已经加载到《剧戏台》中，《剧戏台》仍不会自带任何AI模型。");
@@ -595,6 +691,20 @@ test("旧资料库会补上智谱栏，已经写下的千问钥匙还在", () =>
   assert.equal(next.model.cloudSlots.find((item) => item.id === "slot-deepseek").apiKey, "dk");
   assert.equal(next.model.cloudSlots.find((item) => item.id === "slot-zhipu").baseUrl, "https://open.bigmodel.cn/api/paas/v4");
   assert.equal(old.model.cloudSlots.some((item) => item.id === "slot-zhipu"), false);
+});
+
+test("没写下接话方式时，选过云端的仍只用云端，本机则改成自动", () => {
+  const cloudish = createSeedLibrary();
+  delete cloudish.model.routeMode;
+  cloudish.model.provider = "zhipu";
+  const cloudNext = migrateLibrary(cloudish);
+  assert.notEqual(cloudNext, cloudish);
+  assert.equal(cloudNext.model.routeMode, "cloud");
+
+  const localish = createSeedLibrary();
+  delete localish.model.routeMode;
+  const localNext = migrateLibrary(localish);
+  assert.equal(localNext.model.routeMode, "auto");
 });
 
 test("立绘大小默认是大，对话框默认是矮，并且会留下来", () => {

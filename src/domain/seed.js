@@ -96,6 +96,7 @@ export function createSeedLibrary() {
     transferLog: [],
     model: {
       provider: "local",
+      routeMode: "auto",
       localBaseUrl: "http://127.0.0.1:11434/v1",
       localModel: "",
       localModels: [],
@@ -149,7 +150,9 @@ function ensureLibraryModel(library) {
   const slots = model.cloudSlots || [];
   const hasZhipu = slots.some((slot) => slot.id === "slot-zhipu" || slot.vendor === "zhipu");
   const hasQwen = slots.some((slot) => slot.id === "slot-qwen" || slot.vendor === "qwen");
+  const routeReady = model.routeMode === "auto" || model.routeMode === "local" || model.routeMode === "cloud";
   const ready =
+    routeReady &&
     Array.isArray(model.localModels) &&
     hasZhipu &&
     hasQwen &&

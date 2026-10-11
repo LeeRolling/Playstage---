@@ -18,7 +18,7 @@ import {
   toPublicLibrary,
   updateModel,
 } from "../domain/index.js";
-import { completeChat, probeBackend } from "./chat.js";
+import { completeChat, probeBackend, probeLocalReady } from "./chat.js";
 import { resolveStoredPicture, retargetLibraryPictures } from "./pictures.js";
 import { readHardware } from "./hardware.js";
 import { replyToPlayer } from "./reply.js";
@@ -85,7 +85,12 @@ const server = http.createServer(async (request, response) => {
         }
         replying = true;
         try {
-          const outcome = await replyToPlayer(library, action.text, (target, messages) => completeChat(target, messages));
+          const outcome = await replyToPlayer(
+            library,
+            action.text,
+            (target, messages) => completeChat(target, messages),
+            { probeLocal: probeLocalReady },
+          );
           library = outcome.library;
           store.save(library);
           return send(response, 200, {

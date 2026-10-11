@@ -524,22 +524,32 @@ function modelHtml() {
     const untouched = slot.id === "slot-extra" && !slot.apiKeySet && !slot.model && !slot.baseUrl && !(slot.characterIds || []).length;
     return !untouched;
   });
+  const route = model.routeMode === "local" || model.routeMode === "cloud" ? model.routeMode : "auto";
   return `
     <h2>模型设置</h2>
-    <p class="help">剧戏台不附带、也不下载模型。选下面的一家，点「保存设置」之后，上台说话就会由它来接话。测试云端之前也要先保存，否则用的还是上次留下的钥匙。</p>
+    <p class="help">剧戏台不附带、也不下载模型。先选接话方式，再把本机和云端填好，点「保存设置」。测试云端之前也要先保存，否则用的还是上次留下的钥匙。</p>
     ${model.remindRetest ? `<div class="callout">这次打开软件，请再测一次本机连接。上次的结果还留在下面，但不代表现在仍然通着。</div>` : ""}
-    <div class="callout">需人工完成：本机请先自己安装并打开 Ollama，再装好模型（例如你准备的 Qwen）。云端请到智谱或阿里云百炼自己申请钥匙。只建议从官方渠道获取官方开源模型。</div>
+    <div class="callout">需人工完成：本机请先自己安装并打开 Ollama，再装好模型（例如你准备的 Qwen）。云端请到智谱、阿里云百炼，或另一家（例如 DeepSeek）自己申请钥匙。只建议从官方渠道获取官方开源模型。</div>
     ${prerequisites ? `<p class="help">${esc(prerequisites.ollama)}</p>` : ""}
     <form id="model-form" class="grid" style="margin-top:14px">
+      <div class="block" style="grid-column: 1 / -1">
+        <h3>上台时怎么接话</h3>
+        <label class="check"><input type="radio" name="routeMode" value="auto" ${route === "auto" ? "checked" : ""} /> 自动：本机优先，否则用云端</label>
+        <label class="check"><input type="radio" name="routeMode" value="local" ${route === "local" ? "checked" : ""} /> 只用本机</label>
+        <label class="check"><input type="radio" name="routeMode" value="cloud" ${route === "cloud" ? "checked" : ""} /> 只用云端</label>
+        <p class="help">默认是自动。本机填了模型名，并且 Ollama 开着、那个模型也在，就用本机。本机没选、没装上、连不上，或你把模型名清掉了，就改用已经填好钥匙和模型名的云端，不用再回这一页点选本机。两边都没准备好时才会拦住。</p>
+        ${model.routeHint ? `<p class="model-status">${esc(model.routeHint)}</p>` : ""}
+      </div>
       <div class="block">
         <h3>本机 Ollama</h3>
-        <label class="check"><input type="radio" name="provider" value="local" ${model.provider === "local" ? "checked" : ""} /> 用这台电脑演戏</label>
+        <label class="check"><input type="radio" name="provider" value="local" ${model.provider === "local" ? "checked" : ""} /> 云端按填好的顺序来</label>
+        <p class="help">不指定某一家时，自动会先用另一家（例如 DeepSeek），再试智谱，再试通义千问，用第一家填齐钥匙和模型名的。</p>
         <label>本机地址</label>
         <input name="localBaseUrl" type="url" value="${esc(model.localBaseUrl)}" />
         <p class="help">Ollama 打开后，地址一般是 http://127.0.0.1:11434 。写成 http://127.0.0.1:11434/v1 也可以。先点「读取本机模型」，再在下面选中你装好的那个。本地模型加载速度会与硬件直接关联。</p>
         <label>读取到的模型</label>
         <select id="local-model-pick">
-          <option value="">${known.length ? "从列表里选" : "还没有列表。先读取本机模型"}</option>
+          <option value="">${known.length ? "不选本机模型" : "还没有列表。先读取本机模型"}</option>
           ${known.map((name) => `<option value="${esc(name)}" ${name === model.localModel ? "selected" : ""}>${esc(name)}</option>`).join("")}
         </select>
         <label>模型名</label>
@@ -549,7 +559,7 @@ function modelHtml() {
       </div>
       <div class="block">
         <h3>智谱 GLM</h3>
-        <label class="check"><input type="radio" name="provider" value="zhipu" ${model.provider === "zhipu" ? "checked" : ""} /> 用智谱演戏</label>
+        <label class="check"><input type="radio" name="provider" value="zhipu" ${model.provider === "zhipu" ? "checked" : ""} /> 云端优先用智谱</label>
         <p class="help">地址已经填好：${esc(zhipu.baseUrl || "https://open.bigmodel.cn/api/paas/v4")} 。到智谱开放平台申请钥匙，粘贴在下面。钥匙只存在这台电脑的资料里。</p>
         <label>模型名</label>
         <input name="zhipuModel" type="text" value="${esc(zhipu.model || "")}" placeholder="例如 glm-4-flash" />
@@ -560,7 +570,7 @@ function modelHtml() {
       </div>
       <div class="block">
         <h3>通义千问</h3>
-        <label class="check"><input type="radio" name="provider" value="qwen" ${model.provider === "qwen" ? "checked" : ""} /> 用通义千问演戏</label>
+        <label class="check"><input type="radio" name="provider" value="qwen" ${model.provider === "qwen" ? "checked" : ""} /> 云端优先用通义千问</label>
         <p class="help">地址已经填好：${esc(qwen.baseUrl || "https://dashscope.aliyuncs.com/compatible-mode/v1")} 。到阿里云百炼申请钥匙，粘贴在下面。钥匙只存在这台电脑的资料里。</p>
         <label>模型名</label>
         <input name="qwenModel" type="text" value="${esc(qwen.model || "")}" placeholder="例如 qwen-plus" />
@@ -571,8 +581,8 @@ function modelHtml() {
       </div>
       <div class="block">
         <h3>另一家云端（可选）</h3>
-        <label class="check"><input type="radio" name="provider" value="cloud" ${model.provider === "cloud" ? "checked" : ""} /> 用这一家演戏</label>
-        <p class="help">DeepSeek 也填在这里。地址常见是 https://api.deepseek.com ，模型名按你账号里的来，例如 deepseek-chat 或 DeepSeek-Flash。先保存，再上台。</p>
+        <label class="check"><input type="radio" name="provider" value="cloud" ${model.provider === "cloud" ? "checked" : ""} /> 云端优先用这一家</label>
+        <p class="help">DeepSeek 也填在这里。地址常见是 https://api.deepseek.com ，模型名按你账号里的来，例如 deepseek-chat 或 DeepSeek-Flash。自动时，本机没选上或连不上，就会改用这里，不用再点回本机。</p>
         <label>地址</label>
         <input name="cloudBaseUrl" type="url" value="${esc(model.cloudBaseUrl)}" placeholder="OpenAI 兼容地址，以 /v1 结尾常见" />
         <label>模型名</label>
@@ -1077,7 +1087,7 @@ function bind() {
     if (!text) return;
     composerDraft = "";
     sending = true;
-    const localModel = library?.model?.provider === "local";
+    const localModel = expectsLocalWait(library?.model);
     notice = { tone: "ok", text: waitingNotice(localModel, false) };
     render();
     const waitTimer = setTimeout(() => {
@@ -1251,13 +1261,14 @@ function bind() {
 
   app.querySelector("#local-model-pick")?.addEventListener("change", (event) => {
     const input = app.querySelector("#model-form input[name=localModel]");
-    if (input && event.target.value) input.value = event.target.value;
+    if (input) input.value = event.target.value;
   });
   app.querySelector("#model-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     act({
       type: "model.update",
+      routeMode: data.get("routeMode"),
       provider: data.get("provider"),
       localBaseUrl: data.get("localBaseUrl"),
       localModel: data.get("localModel"),
@@ -1379,6 +1390,13 @@ async function testSlot(slotId) {
     notice = { tone: "bad", text: "这家云端没有测完。请确认启动窗口还在。" };
   }
   render();
+}
+
+function expectsLocalWait(model) {
+  const mode = model?.routeMode || "auto";
+  if (mode === "cloud") return false;
+  if (mode === "local") return true;
+  return Boolean(String(model?.localModel || "").trim());
 }
 
 function waitingNotice(local, late) {

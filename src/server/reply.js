@@ -9,17 +9,18 @@ import {
   buildActingMessages,
   commitNpcReply,
   finishCoolDown,
+  localRouteProbe,
   planSpeakers,
   sendPlayerLine,
 } from "../domain/index.js";
 
-export async function replyToPlayer(library, text, complete) {
+export async function replyToPlayer(library, text, complete, options = {}) {
   let next = sendPlayerLine(library, text);
   const plan = planSpeakers(next);
   if (!plan.speakers.length) {
     return { library: next, message: "", tone: "ok" };
   }
-  const target = actingTarget(next);
+  const target = actingTarget(next, await routeOptions(next, options));
   if (!target.ok) {
     next = appendSystemLine(next, target.message);
     return { library: next, message: target.message, tone: "bad" };
@@ -51,5 +52,22 @@ export async function replyToPlayer(library, text, complete) {
     }
   }
   if (plan.coolDown) next = finishCoolDown(next);
-  return { library: next, message: "", tone: "ok" };
+  return { library: next, message: target.notice || "", tone: "ok" };
+}
+
+async function routeOptions(library, options) {
+  if (typeof options.probeLocal !== "function") return {};
+  const probeTarget = localRouteProbe(library);
+  if (!probeTarget) return {};
+  let probed;
+  try {
+    probed = await options.probeLocal(probeTarget);
+  } catch {
+    probed = { ok: false, reason: "unreachable" };
+  }
+  const ok = probed === true || probed?.ok === true;
+  return {
+    localReachable: ok,
+    localReason: ok ? "" : probed?.reason || "unreachable",
+  };
 }

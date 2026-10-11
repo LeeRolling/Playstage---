@@ -91,18 +91,19 @@ export function explainNetworkError(error, target) {
   return "连不上这家云端。请检查网络，以及「模型」页里的地址和钥匙。";
 }
 
-export async function listModels(target, fetchImpl = fetch) {
+export async function listModels(target, fetchImpl = fetch, options = {}) {
   const urls = resolveModelListUrls(target?.baseUrl);
   if (!urls.length) {
     return { ok: false, models: [], status: 0, message: "地址读不懂。请填写 http 开头的本机或云端地址。" };
   }
+  const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 4000;
   let lastStatus = 0;
   let lastMessage = "";
   for (const url of urls) {
     try {
       const response = await fetchImpl(url, {
         headers: authHeaders(target?.apiKey),
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       lastStatus = response.status;
       if (!response.ok) {
@@ -116,6 +117,21 @@ export async function listModels(target, fetchImpl = fetch) {
     }
   }
   return { ok: false, models: [], status: lastStatus, message: lastMessage || "没有读到模型列表。" };
+}
+
+/** 本机模型名已经填了之后，短问一次 Ollama：连不上或列表里没有，就让自动改走云端。 */
+export async function probeLocalReady(target, fetchImpl = fetch) {
+  const listed = await listModels({ baseUrl: target?.baseUrl, apiKey: "" }, fetchImpl, { timeoutMs: 1500 });
+  if (!listed.ok) return { ok: false, reason: "unreachable" };
+  const wanted = String(target?.model || "").trim();
+  if (!wanted || !listed.models.length || !modelNameInstalled(listed.models, wanted)) {
+    return { ok: false, reason: "missing" };
+  }
+  return { ok: true, reason: "" };
+}
+
+function modelNameInstalled(names, wanted) {
+  return names.some((name) => name === wanted || name.startsWith(`${wanted}:`) || wanted.startsWith(`${name}:`));
 }
 
 export function looksLikeDeepSeek(target) {

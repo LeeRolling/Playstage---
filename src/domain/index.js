@@ -18,6 +18,7 @@ import {
   actingTarget,
   armModelRetest,
   LOCAL_CONNECTED_NOTE,
+  localRouteProbe,
   publicModel,
   recordProbe,
   updateCloudSlot,
@@ -57,6 +58,7 @@ import {
 export {
   actingTarget,
   adviseFromVram,
+  localRouteProbe,
   appendSystemLine,
   armModelRetest,
   buildActingMessages,
@@ -184,7 +186,13 @@ function plain(library, message) {
 }
 
 function modelSavedMessage(action) {
-  if (action?.provider === "local") {
+  if (action?.routeMode === "auto") {
+    return "已按自动接话保存：本机连得上就用本机，否则用填好的云端。《剧戏台》仍不会自带任何AI模型。";
+  }
+  if (action?.routeMode === "cloud") {
+    return "已改成只用云端。《剧戏台》仍不会自带任何AI模型。";
+  }
+  if (action?.routeMode === "local" || action?.provider === "local") {
     return "本地模型已经加载到《剧戏台》中，《剧戏台》仍不会自带任何AI模型。";
   }
   if (action?.provider === "zhipu" || action?.provider === "qwen" || action?.provider === "cloud") {
