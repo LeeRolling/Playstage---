@@ -1,6 +1,9 @@
 import { clone, nowIso } from "./util.js";
 
 export const LOCAL_CONNECTED_NOTE = "连上了。上台说话时会用这里选中的本机模型。剧戏台仍不附带模型。";
+export const LOCAL_WARM_IDLE_MINUTES = 10;
+export const LOCAL_KEEP_ALIVE_PIN = -1;
+export const LOCAL_KEEP_ALIVE_RELEASE = 0;
 export const OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1";
 export const ZHIPU_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 export const QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
@@ -24,6 +27,8 @@ export function publicModel(model) {
     localBaseUrl: model.localBaseUrl || OLLAMA_BASE_URL,
     localModel: model.localModel || "",
     localModels: [...(model.localModels || [])],
+    localKeepWarm: Boolean(model.localKeepWarm),
+    localWarmIdleMinutes: LOCAL_WARM_IDLE_MINUTES,
     cloudBaseUrl: model.cloudBaseUrl || "",
     cloudModel: model.cloudModel || "",
     cloudApiKeySet: Boolean(model.cloudApiKey),
@@ -55,6 +60,7 @@ export function updateModel(library, fields) {
   }
   if (fields.localBaseUrl != null) model.localBaseUrl = String(fields.localBaseUrl).trim();
   if (fields.localModel != null) model.localModel = String(fields.localModel).trim();
+  if (fields.localKeepWarm != null) model.localKeepWarm = Boolean(fields.localKeepWarm);
   if (fields.cloudBaseUrl != null) model.cloudBaseUrl = String(fields.cloudBaseUrl).trim();
   if (fields.cloudModel != null) model.cloudModel = String(fields.cloudModel).trim();
   if (fields.clearCloudApiKey) model.cloudApiKey = "";
@@ -170,8 +176,29 @@ export function ensureModelSlots(model) {
     if (!slot.label) slot.label = slot.vendor === "zhipu" ? "智谱" : slot.vendor === "qwen" ? "通义千问" : "另一家云端";
   }
   if (!Array.isArray(model.localModels)) model.localModels = [];
+  if (typeof model.localKeepWarm !== "boolean") model.localKeepWarm = false;
   model.routeMode = resolveRouteMode(model);
   return model;
+}
+
+/** 勾了预热、并且这一句真的走本机时，才让 Ollama 把模型留在显存里。云端回退不带这个参数。 */
+export function localChatKeepAlive(model, target) {
+  if (!model?.localKeepWarm) return null;
+  if (resolveRouteMode(model) === "cloud") return null;
+  if (!target || target.apiKey) return null;
+  if (target.provider && target.provider !== "local") return null;
+  const name = String(model.localModel || "").trim();
+  if (!name || target.model !== name) return null;
+  return LOCAL_KEEP_ALIVE_PIN;
+}
+
+export function shouldReleaseLocalWarm(state) {
+  if (!state?.pinned) return false;
+  const last = Number(state.lastLocalUseAt) || 0;
+  const now = Number(state.now) || 0;
+  const idleMs = Number(state.idleMs) > 0 ? Number(state.idleMs) : LOCAL_WARM_IDLE_MINUTES * 60 * 1000;
+  if (!last || !now) return false;
+  return now - last >= idleMs;
 }
 
 function localCandidate(model) {

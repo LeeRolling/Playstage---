@@ -38,6 +38,7 @@ let paintedView = null;
 let toastTimer = 0;
 let pendingAnchor = "";
 let sending = false;
+let localWarm = { pinned: false, message: "", idleMinutes: 10 };
 let composerDraft = "";
 const previews = new Map();
 const sceneCache = new Map();
@@ -49,6 +50,7 @@ async function boot() {
     const response = await fetch("/api/bootstrap");
     const data = await response.json();
     library = data.library;
+    if (data.warm) localWarm = data.warm;
     hardware = data.hardware;
     prerequisites = data.prerequisites;
     dataFile = data.dataFile || "";
@@ -555,7 +557,14 @@ function modelHtml() {
         <label>模型名</label>
         <input name="localModel" type="text" value="${esc(model.localModel)}" placeholder="例如你在 Ollama 里看到的 qwen" />
         ${localStatus ? `<p class="model-status">${esc(localStatus)}</p>` : `<p class="help">读取成功后，这里会留下一句：连上了。之后上台就会用它接话。</p>`}
-        <div class="row"><button class="ghost" type="button" id="test-model">读取本机模型</button></div>
+        <label class="check"><input name="localKeepWarm" type="checkbox" ${model.localKeepWarm ? "checked" : ""} /> 预热加载</label>
+        <p class="help">勾上后，选中的本机模型会留在显存里，上台不用每次重新加载再卸掉。大约 ${Number(model.localWarmIdleMinutes) || 10} 分钟没有用本机接话，或点「卸下」，就会放开。关掉这个勾选再保存，也会卸下。自动改走云端时，不会把预热带进云端请求，本机这块显存仍会在空闲后放开。</p>
+        ${localWarm?.message ? `<p class="model-status">${esc(localWarm.message)}</p>` : ""}
+        <div class="row">
+          <button class="ghost" type="button" id="test-model">读取本机模型</button>
+          <button class="ghost" type="button" id="warm-model">现在预热</button>
+          <button class="ghost" type="button" id="unload-model">卸下</button>
+        </div>
       </div>
       <div class="block">
         <h3>智谱 GLM</h3>
@@ -1282,9 +1291,12 @@ function bind() {
       qwenModel: data.get("qwenModel"),
       qwenApiKey: data.get("qwenApiKey"),
       clearQwenApiKey: data.get("clearQwenApiKey") === "on",
+      localKeepWarm: data.get("localKeepWarm") === "on",
     });
   });
   app.querySelector("#test-model")?.addEventListener("click", testModel);
+  app.querySelector("#warm-model")?.addEventListener("click", warmModel);
+  app.querySelector("#unload-model")?.addEventListener("click", unloadModel);
   app.querySelectorAll(".slot-form").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -1350,6 +1362,7 @@ async function act(action, options = {}) {
       return false;
     }
     library = data.library;
+    if (data.warm) localWarm = data.warm;
     notice = data.message ? { tone: data.tone === "bad" ? "bad" : "ok", text: data.message } : null;
     if (data.download) download(data.download);
     if (options.render !== false) render();
@@ -1368,9 +1381,40 @@ async function testModel() {
     const response = await fetch("/api/model/test", { method: "POST" });
     const data = await response.json();
     if (data.library) library = data.library;
+    if (data.warm) localWarm = data.warm;
     notice = { tone: data.ok ? "ok" : "bad", text: data.message };
   } catch {
     notice = { tone: "bad", text: "测试没有完成。请确认启动窗口还在。" };
+  }
+  render();
+}
+
+async function warmModel() {
+  notice = { tone: "ok", text: "正在把本机模型读进显存，第一次会慢一些。" };
+  render();
+  try {
+    const response = await fetch("/api/model/warm", { method: "POST" });
+    const data = await response.json();
+    if (data.library) library = data.library;
+    if (data.warm) localWarm = data.warm;
+    notice = { tone: data.ok ? "ok" : "bad", text: data.message };
+  } catch {
+    notice = { tone: "bad", text: "预热没有完成。请确认启动窗口还在，Ollama 也已经打开。" };
+  }
+  render();
+}
+
+async function unloadModel() {
+  notice = { tone: "ok", text: "正在卸下本机模型…" };
+  render();
+  try {
+    const response = await fetch("/api/model/unload", { method: "POST" });
+    const data = await response.json();
+    if (data.library) library = data.library;
+    if (data.warm) localWarm = data.warm;
+    notice = { tone: data.ok ? "ok" : "bad", text: data.message };
+  } catch {
+    notice = { tone: "bad", text: "卸下没有完成。请确认启动窗口还在。" };
   }
   render();
 }

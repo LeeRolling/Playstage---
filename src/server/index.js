@@ -14,11 +14,13 @@ import {
   describePrerequisites,
   dispatch,
   LOCAL_CONNECTED_NOTE,
+  localChatKeepAlive,
   recordProbe,
+  resolveRouteMode,
   toPublicLibrary,
   updateModel,
 } from "../domain/index.js";
-import { completeChat, probeBackend, probeLocalReady } from "./chat.js";
+import { completeChat, createLocalWarmKeeper, probeBackend, probeLocalReady } from "./chat.js";
 import { resolveStoredPicture, retargetLibraryPictures } from "./pictures.js";
 import { readHardware } from "./hardware.js";
 import { replyToPlayer } from "./reply.js";
@@ -58,6 +60,7 @@ const types = {
 
 let replying = false;
 const updateNotice = takeUpdateNote(root) || { message: "", tone: "ok" };
+const warmKeeper = createLocalWarmKeeper();
 
 const server = http.createServer(async (request, response) => {
   try {
@@ -70,6 +73,7 @@ const server = http.createServer(async (request, response) => {
         hardware,
         prerequisites: describePrerequisites({ ollamaReachable }),
         dataFile: store.file,
+        warm: warmKeeper.snapshot(),
         update: updateNotice.message ? { message: updateNotice.message, tone: updateNotice.tone } : null,
       });
     }
@@ -88,7 +92,12 @@ const server = http.createServer(async (request, response) => {
           const outcome = await replyToPlayer(
             library,
             action.text,
-            (target, messages) => completeChat(target, messages),
+            async (target, messages) => {
+              const keepAlive = localChatKeepAlive(library.model, target);
+              const result = await completeChat(target, messages, fetch, keepAlive == null ? {} : { keepAlive });
+              if (result.ok && keepAlive != null) warmKeeper.noteLocalChat(target);
+              return result;
+            },
             { probeLocal: probeLocalReady },
           );
           library = outcome.library;
@@ -97,19 +106,27 @@ const server = http.createServer(async (request, response) => {
             library: toPublicLibrary(library),
             message: outcome.message || "",
             tone: outcome.tone === "bad" ? "bad" : "ok",
+            warm: warmKeeper.snapshot(),
           });
         } finally {
           replying = false;
         }
       }
+      const beforeModel = library.model;
       const result = dispatch(library, action);
       library = result.library;
       store.save(library);
+      let message = result.message || "";
+      if (action.type === "model.update") {
+        const note = await warmKeeper.onModelSaved(beforeModel, library.model);
+        if (note) message = message ? `${message}${note}` : note;
+      }
       return send(response, 200, {
         library: toPublicLibrary(library),
-        message: result.message || "",
+        message,
         tone: "ok",
         download: result.download || null,
+        warm: warmKeeper.snapshot(),
       });
     }
     if (url.pathname === "/api/model/test" && request.method === "POST") {
@@ -119,7 +136,40 @@ const server = http.createServer(async (request, response) => {
       }
       library = recordProbe(library, result);
       store.save(library);
-      return send(response, 200, { ...result, library: toPublicLibrary(library) });
+      return send(response, 200, { ...result, library: toPublicLibrary(library), warm: warmKeeper.snapshot() });
+    }
+    if (url.pathname === "/api/model/warm" && request.method === "POST") {
+      const name = String(library.model?.localModel || "").trim();
+      if (!name) {
+        return send(response, 200, {
+          ok: false,
+          message: "还没有选择本机模型，没法预热。请先读取并选中一个。剧戏台不下载模型。",
+          library: toPublicLibrary(library),
+          warm: warmKeeper.snapshot(),
+        });
+      }
+      if (!library.model.localKeepWarm) {
+        library = updateModel(library, { localKeepWarm: true });
+        store.save(library);
+      }
+      const result = await warmKeeper.pin({ baseUrl: library.model.localBaseUrl, model: name });
+      return send(response, 200, { ...result, library: toPublicLibrary(library), warm: warmKeeper.snapshot() });
+    }
+    if (url.pathname === "/api/model/unload" && request.method === "POST") {
+      const name = String(library.model?.localModel || warmKeeper.snapshot().model || "").trim();
+      if (!warmKeeper.snapshot().pinned && !name) {
+        return send(response, 200, {
+          ok: true,
+          message: "本机模型现在没有留在显存里。",
+          library: toPublicLibrary(library),
+          warm: warmKeeper.snapshot(),
+        });
+      }
+      const result = await warmKeeper.release("released", {
+        baseUrl: library.model?.localBaseUrl,
+        model: name,
+      });
+      return send(response, 200, { ...result, library: toPublicLibrary(library), warm: warmKeeper.snapshot() });
     }
     if (url.pathname === "/api/model/test-slot" && request.method === "POST") {
       const body = await readJson(request, { requireType: false, limit: 40_000 });
@@ -192,6 +242,13 @@ async function boot() {
   console.log("关掉这个窗口，剧戏台就会停止。");
   console.log("");
   openBrowser(page);
+  const model = library.model;
+  if (model?.localKeepWarm && String(model.localModel || "").trim() && resolveRouteMode(model) !== "cloud") {
+    warmKeeper.pin({ baseUrl: model.localBaseUrl, model: model.localModel }).catch(() => {});
+  }
+  setInterval(() => {
+    warmKeeper.tick(library.model).catch(() => {});
+  }, 30_000);
 }
 
 server.on("error", (error) => {

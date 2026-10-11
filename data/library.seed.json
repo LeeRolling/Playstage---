@@ -585,6 +585,7 @@
     "localBaseUrl": "http://127.0.0.1:11434/v1",
     "localModel": "",
     "localModels": [],
+    "localKeepWarm": false,
     "cloudBaseUrl": "",
     "cloudApiKey": "",
     "cloudModel": "",

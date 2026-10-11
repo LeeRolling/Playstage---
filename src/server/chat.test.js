@@ -4,12 +4,15 @@ import test from "node:test";
 import {
   chatTimeoutMs,
   completeChat,
+  createLocalWarmKeeper,
   explainHttpStatus,
   looksLikeDeepSeek,
+  ollamaGenerateUrl,
   parseModelList,
   probeLocalReady,
   resolveChatUrl,
   resolveModelListUrls,
+  setLocalKeepAlive,
 } from "./chat.js";
 
 test("对话地址认得出 Ollama、智谱和千问", () => {
@@ -79,6 +82,7 @@ test("completeChat 会把台词从兼容接口里取出来", async () => {
     assert.equal(seen.body.model, "qwen-local");
     assert.equal(seen.body.stream, true);
     assert.equal(seen.body.thinking, undefined);
+    assert.equal(seen.body.keep_alive, undefined);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -141,6 +145,7 @@ test("DeepSeek 空内容会再问一次，并关掉思考", async () => {
   assert.equal(result.text, "门还开着。");
   assert.equal(bodies.length, 2);
   assert.equal(bodies[0].stream, true);
+  assert.equal(bodies[0].keep_alive, undefined);
   assert.deepEqual(bodies[0].thinking, { type: "disabled" });
   assert.equal(bodies[1].stream, false);
   assert.deepEqual(bodies[1].thinking, { type: "disabled" });
@@ -208,6 +213,110 @@ test("本机探测能分出连不上和没装上", async () => {
   });
   assert.equal(down.ok, false);
   assert.equal(down.reason, "unreachable");
+});
+
+test("预热的 keep_alive 只出现在本机请求里", async () => {
+  assert.equal(ollamaGenerateUrl("http://127.0.0.1:11434/v1"), "http://127.0.0.1:11434/api/generate");
+  assert.equal(ollamaGenerateUrl("http://127.0.0.1:11434"), "http://127.0.0.1:11434/api/generate");
+  const seen = [];
+  const fetchImpl = async (url, init) => {
+    seen.push({ url, body: JSON.parse(init.body) });
+    return { ok: true, status: 200, text: async () => "" };
+  };
+  const pinned = await setLocalKeepAlive(
+    { baseUrl: "http://127.0.0.1:11434/v1", model: "qwen-local" },
+    -1,
+    fetchImpl,
+  );
+  assert.equal(pinned.ok, true);
+  assert.match(pinned.message, /留在显存/);
+  const released = await setLocalKeepAlive(
+    { baseUrl: "http://127.0.0.1:11434/v1", model: "qwen-local" },
+    0,
+    fetchImpl,
+  );
+  assert.match(released.message, /卸下/);
+  assert.equal(seen[0].url, "http://127.0.0.1:11434/api/generate");
+  assert.equal(seen[0].body.keep_alive, -1);
+  assert.equal(seen[0].body.stream, false);
+  assert.equal(seen[1].body.keep_alive, 0);
+
+  const bodies = [];
+  const chatFetch = async (_url, init) => {
+    bodies.push(JSON.parse(init.body));
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ choices: [{ message: { content: "在。" } }] }),
+    };
+  };
+  await completeChat(
+    { baseUrl: "http://127.0.0.1:9/v1", model: "qwen", apiKey: "" },
+    [{ role: "user", content: "在吗" }],
+    chatFetch,
+    { keepAlive: -1 },
+  );
+  await completeChat(
+    { baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat", apiKey: "dk" },
+    [{ role: "user", content: "在吗" }],
+    chatFetch,
+    { keepAlive: -1 },
+  );
+  assert.equal(bodies[0].keep_alive, -1);
+  assert.equal(bodies[0].stream, true);
+  assert.equal(bodies[1].keep_alive, undefined);
+  assert.deepEqual(bodies[1].thinking, { type: "disabled" });
+});
+
+test("预热后一段时间没人用本机，就把模型从显存放开", async () => {
+  let clock = 1_000;
+  const calls = [];
+  const keeper = createLocalWarmKeeper({
+    idleMs: 1_000,
+    now: () => clock,
+    setKeepAlive: async (target, keepAlive) => {
+      calls.push({ model: target.model, keepAlive });
+      return { ok: true, message: keepAlive === 0 ? "本机模型已从显存卸下。" : "本机模型已留在显存里。" };
+    },
+  });
+  const model = {
+    localKeepWarm: true,
+    localModel: "qwen",
+    localBaseUrl: "http://127.0.0.1:11434/v1",
+    routeMode: "auto",
+    provider: "local",
+  };
+  await keeper.pin({ baseUrl: model.localBaseUrl, model: "qwen" });
+  assert.equal(calls[0].keepAlive, -1);
+  assert.equal(keeper.snapshot().pinned, true);
+  clock = 1_500;
+  await keeper.tick(model);
+  assert.equal(calls.length, 1);
+  keeper.noteLocalChat({ baseUrl: model.localBaseUrl, model: "qwen" });
+  clock = 2_000;
+  await keeper.tick(model);
+  assert.equal(calls.length, 1);
+  clock = 2_600;
+  await keeper.tick(model);
+  assert.equal(calls.at(-1).keepAlive, 0);
+  assert.equal(keeper.snapshot().pinned, false);
+  assert.match(keeper.snapshot().message, /放开/);
+
+  await keeper.pin({ baseUrl: model.localBaseUrl, model: "qwen" });
+  clock += 10;
+  await keeper.tick({ ...model, routeMode: "cloud" });
+  assert.equal(calls.at(-1).keepAlive, 0);
+
+  const note = await keeper.onModelSaved(
+    { ...model, localKeepWarm: false, routeMode: "auto" },
+    { ...model, localKeepWarm: true },
+  );
+  assert.match(note, /读进显存/);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.at(-1).keepAlive, -1);
+  const dropped = await keeper.onModelSaved(model, { ...model, localKeepWarm: false });
+  assert.match(dropped, /卸下/);
+  assert.equal(calls.at(-1).keepAlive, 0);
 });
 
 test("云端地址没带钥匙时不等超时", async () => {

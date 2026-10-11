@@ -100,6 +100,7 @@ export function createSeedLibrary() {
       localBaseUrl: "http://127.0.0.1:11434/v1",
       localModel: "",
       localModels: [],
+      localKeepWarm: false,
       cloudBaseUrl: "",
       cloudApiKey: "",
       cloudModel: "",
@@ -153,6 +154,7 @@ function ensureLibraryModel(library) {
   const routeReady = model.routeMode === "auto" || model.routeMode === "local" || model.routeMode === "cloud";
   const ready =
     routeReady &&
+    typeof model.localKeepWarm === "boolean" &&
     Array.isArray(model.localModels) &&
     hasZhipu &&
     hasQwen &&

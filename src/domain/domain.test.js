@@ -3,7 +3,15 @@ import fs from "node:fs";
 import test from "node:test";
 import { adviseFromVram, describePrerequisites } from "./guide.js";
 import { createSeedLibrary, migrateLibrary } from "./library.js";
-import { LOCAL_CONNECTED_NOTE, actingTarget, armModelRetest, localRouteProbe } from "./models.js";
+import {
+  LOCAL_CONNECTED_NOTE,
+  LOCAL_KEEP_ALIVE_PIN,
+  actingTarget,
+  armModelRetest,
+  localChatKeepAlive,
+  localRouteProbe,
+  shouldReleaseLocalWarm,
+} from "./models.js";
 import { resolveScene } from "./scene.js";
 import { buildActingMessages, commitNpcReply, dispatch, finishCoolDown, planSpeakers, sessionForm, toPublicLibrary } from "./index.js";
 import { resolveUiSkin } from "./settings.js";
@@ -604,6 +612,41 @@ test("自动时勾了智谱就用智谱，没勾就用另一家留下的接口",
   assert.equal(fromSlot.model, "DeepSeek-Flash");
   assert.equal(fromSlot.baseUrl, "https://api.deepseek.com/v1");
   assert.equal(fromSlot.apiKey, "slot-dk");
+});
+
+test("预热只留给本机，云端回退和空闲后会放开", () => {
+  const seeded = createSeedLibrary();
+  assert.equal(seeded.model.localKeepWarm, false);
+  let library = dispatch(seeded, { type: "model.update", localKeepWarm: true, localModel: "qwen-local" }).library;
+  assert.equal(library.model.localKeepWarm, true);
+  library = dispatch(library, { type: "model.update", localModel: "qwen-local" }).library;
+  assert.equal(library.model.localKeepWarm, true);
+  const published = toPublicLibrary(library).model;
+  assert.equal(published.localKeepWarm, true);
+  assert.equal(published.localWarmIdleMinutes, 10);
+  const localTarget = { provider: "local", model: "qwen-local", apiKey: "", baseUrl: "http://127.0.0.1:11434/v1" };
+  assert.equal(localChatKeepAlive(library.model, localTarget), LOCAL_KEEP_ALIVE_PIN);
+  assert.equal(
+    localChatKeepAlive(library.model, {
+      provider: "cloud",
+      model: "deepseek-chat",
+      apiKey: "dk",
+      baseUrl: "https://api.deepseek.com/v1",
+    }),
+    null,
+  );
+  const cloudOnly = dispatch(library, { type: "model.update", routeMode: "cloud" }).library;
+  assert.equal(localChatKeepAlive(cloudOnly.model, localTarget), null);
+  const off = dispatch(library, { type: "model.update", localKeepWarm: false }).library;
+  assert.equal(localChatKeepAlive(off.model, localTarget), null);
+  assert.equal(shouldReleaseLocalWarm({ pinned: true, lastLocalUseAt: 1000, now: 1500, idleMs: 1000 }), false);
+  assert.equal(shouldReleaseLocalWarm({ pinned: true, lastLocalUseAt: 1000, now: 2000, idleMs: 1000 }), true);
+  assert.equal(shouldReleaseLocalWarm({ pinned: false, lastLocalUseAt: 1000, now: 9000, idleMs: 1000 }), false);
+
+  const old = createSeedLibrary();
+  delete old.model.localKeepWarm;
+  const migrated = migrateLibrary(old);
+  assert.equal(migrated.model.localKeepWarm, false);
 });
 
 test("保存本机和云端时，提示分开写，并且用对「仍」", () => {
