@@ -141,3 +141,71 @@ test("抢话会接两句然后冷静", async () => {
   assert.match(outcome.library.sessions[0].messages.at(-1).text, /冷静/);
   assert.equal(JSON.stringify(toPublicLibrary(outcome.library)).includes("zk"), false);
 });
+
+test("生成时只标出正在接话的那一位，说完或失败都清掉", async () => {
+  let library = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-frost" }).library;
+  library = dispatch(library, { type: "session.setMode", mode: "interrupt" }).library;
+  library = dispatch(library, { type: "model.update", provider: "local", localModel: "qwen-local" }).library;
+  let current = "";
+  const during = [];
+  await replyToPlayer(
+    library,
+    "我饿了",
+    async () => {
+      during.push(current);
+      return { ok: true, text: during.length === 1 ? "先去炉火边。" : "今天就吃这个。" };
+    },
+    { onSpeaker(id) { current = id; } },
+  );
+  assert.deepEqual(during, ["npc-astrid", "npc-sigrid"]);
+  assert.equal(current, "");
+
+  const turn = dispatch(library, { type: "session.setMode", mode: "turn" }).library;
+  const cloud = dispatch(turn, {
+    type: "model.update",
+    routeMode: "cloud",
+    provider: "cloud",
+    cloudBaseUrl: "https://api.deepseek.com/v1",
+    cloudModel: "deepseek-chat",
+    cloudApiKey: "dk",
+  }).library;
+  current = "stale";
+  const cloudDuring = [];
+  await replyToPlayer(
+    cloud,
+    "再问一句",
+    async (target) => {
+      assert.equal(target.provider, "cloud");
+      assert.equal(target.apiKey, "dk");
+      cloudDuring.push(current);
+      return { ok: true, text: "炉火还在。" };
+    },
+    { onSpeaker(id) { current = id; } },
+  );
+  assert.deepEqual(cloudDuring, ["npc-astrid"]);
+  assert.equal(current, "");
+
+  current = "stale";
+  const failedDuring = [];
+  const failed = await replyToPlayer(
+    turn,
+    "这句会断",
+    async () => {
+      failedDuring.push(current);
+      throw new Error("断了");
+    },
+    { onSpeaker(id) { current = id; } },
+  );
+  assert.equal(failed.tone, "bad");
+  assert.deepEqual(failedDuring, ["npc-astrid"]);
+  assert.equal(current, "");
+
+  let marked = false;
+  const quiet = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-frost" }).library;
+  const direct = dispatch(quiet, { type: "session.setMode", mode: "direct" }).library;
+  const named = dispatch(direct, { type: "model.update", provider: "local", localModel: "qwen-local" }).library;
+  await replyToPlayer(named, "没点名", async () => {
+    throw new Error("不该生成");
+  }, { onSpeaker() { marked = true; } });
+  assert.equal(marked, false);
+});

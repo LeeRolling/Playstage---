@@ -38,6 +38,8 @@ let paintedView = null;
 let toastTimer = 0;
 let pendingAnchor = "";
 let sending = false;
+let thinkingSpeakerId = "";
+let speakWatch = 0;
 let localWarm = { pinned: false, message: "", idleMinutes: 10 };
 let composerDraft = "";
 const previews = new Map();
@@ -156,7 +158,7 @@ function sceneBackgroundHtml(sceneUrl, sceneOk, sceneMissing) {
 function stageHtml(session, scene, sceneUrl, sceneMissing) {
   const missingFile = scene.backgroundSet && sceneUrl && sceneMissing;
   const cast = castOf(session);
-  const speaker = currentSpeaker(session);
+  const speaker = stageSpeaker(session);
   return `
     <div class="plaque"><span>${esc(scene.stageName || "选择舞台")}</span><strong>${esc(scene.locationName)}</strong></div>
     <div class="stage-scale">${scaleControlsHtml()}${skinControlsHtml()}</div>
@@ -215,12 +217,15 @@ function ribbonHtml(scene, missingFile) {
 }
 
 function spriteHtml(person, speaker) {
-  const src = pictureUrl(person, "fullBody");
+  const thinkingSrc = thinkingSpeakerId === person.id ? pictureUrl(person, "thinking") : "";
+  const src = thinkingSrc || pictureUrl(person, "fullBody");
   const someoneSpeaking = Boolean(speaker?.id) && speaker.id !== "system";
   const quiet = someoneSpeaking && person.id !== speaker.id;
-  const image = src ? `<img alt="${esc(person.name)}的立绘" src="${esc(src)}" />` : "";
+  const image = src
+    ? `<img alt="${esc(person.name)}的立绘" src="${esc(src)}" data-art="${thinkingSrc ? "thinking" : "full"}" />`
+    : "";
   const pose = poseOf(person);
-  return `<div class="sprite ${quiet ? "is-quiet" : "is-speaking"}" style="--pose-x:${pose.x};--pose-y:${pose.y};--pose-scale:${pose.scale}"><div class="figure" style="--accent:${accent(person.id)}">${image}</div></div>`;
+  return `<div class="sprite ${quiet ? "is-quiet" : "is-speaking"}" data-person="${esc(person.id)}" style="--pose-x:${pose.x};--pose-y:${pose.y};--pose-scale:${pose.scale}"><div class="figure" style="--accent:${accent(person.id)}">${image}</div></div>`;
 }
 
 function ledgerHtml() {
@@ -372,7 +377,7 @@ function cardsHtml() {
   const players = library.characters.filter((item) => item.kind === "player");
   return `
     <h2>人设卡</h2>
-    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像和全身图都可以裁一下再留下。新裁的头像和全身图会存成 PNG，下面的路径会换成新文件，透明底会留下来。原来的图还在文件夹里，不会被删掉。左右、上下和放大记在这张卡上，每一场都用这一套。</p>
+    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像、全身图和思考立绘都可以裁一下再留下。新裁的图会存成 PNG，下面的路径会换成新文件，透明底会留下来。原来的图还在文件夹里，不会被删掉。左右、上下和放大记在这张卡上，每一场都用这一套。</p>
     <div class="row">
       <button class="primary" type="button" data-new="player">新的玩家人设</button>
       <button class="ghost" type="button" data-new="npc">新的角色（记在当前舞台）</button>
@@ -392,12 +397,14 @@ function cardsHtml() {
 function cardHtml(person) {
   const avatar = pictureUrl(person, "avatar");
   const body = pictureUrl(person, "fullBody");
+  const thinking = person.kind === "npc" ? pictureUrl(person, "thinking") : "";
   return `
     <form class="card" data-card="${esc(person.id)}">
       <h3>${person.kind === "player" ? "玩家人设" : esc(person.name)}</h3>
       <div class="portrait-row">
         ${avatar ? `<img class="thumb" alt="" src="${esc(avatar)}" />` : `<div class="thumb"></div>`}
         ${body ? `<img class="thumb" alt="" src="${esc(body)}" />` : `<div class="thumb"></div>`}
+        ${person.kind === "npc" ? (thinking ? `<img class="thumb" alt="" src="${esc(thinking)}" />` : `<div class="thumb"></div>`) : ""}
       </div>
       <label>名字</label>
       <input name="name" type="text" value="${esc(person.name)}" />
@@ -413,6 +420,7 @@ function cardHtml(person) {
       <label>全身图 / 立绘（可裁成立绘）</label>
       <input type="file" accept="image/*" data-crop="full" data-person="${esc(person.id)}" />
       <p class="help">${person.fullBodyFile ? `已记下 ${esc(person.fullBodyFile)}` : "没有全身图时，舞台上用剪影占位。"}</p>
+      ${thinkingFieldsHtml(person)}
       ${poseFieldsHtml(person)}
       <div class="row">
         <button class="primary" type="submit">保存人设</button>
@@ -420,6 +428,17 @@ function cardHtml(person) {
       </div>
     </form>
   `;
+}
+
+function thinkingFieldsHtml(person) {
+  if (person.kind !== "npc") return "";
+  const help = person.thinkingFile
+    ? `已记下 ${esc(person.thinkingFile)}。只在这个人等模型接话时显示，说完就换回全身图。`
+    : "可选。只在这个人等模型接话时显示，说完就换回全身图。不设的话，一直用全身图。";
+  return `
+      <label>思考</label>
+      <input type="file" accept="image/*" data-crop="thinking" data-person="${esc(person.id)}" />
+      <p class="help">${help}</p>`;
 }
 
 function sessionHtml() {
@@ -1096,9 +1115,13 @@ function bind() {
     if (!text) return;
     composerDraft = "";
     sending = true;
+    speakWatch += 1;
+    const watchToken = speakWatch;
+    thinkingSpeakerId = "";
     const localModel = expectsLocalWait(library?.model);
     notice = { tone: "ok", text: waitingNotice(localModel, false) };
     render();
+    watchSpeaking(watchToken);
     const waitTimer = setTimeout(() => {
       if (!sending) return;
       notice = { tone: "ok", text: waitingNotice(localModel, true) };
@@ -1106,6 +1129,8 @@ function bind() {
     }, localModel ? 20000 : 12000);
     const ok = await act({ type: "session.send", text }, { render: false });
     clearTimeout(waitTimer);
+    speakWatch += 1;
+    thinkingSpeakerId = "";
     sending = false;
     if (!ok) composerDraft = text;
     render();
@@ -1161,17 +1186,24 @@ function bind() {
       input.value = "";
       if (!file) return;
       const kind = input.dataset.crop;
-      const aspect = kind === "avatar" ? 1 : kind === "full" ? 2 / 3 : 16 / 9;
-      const title = kind === "avatar" ? "裁头像" : kind === "full" ? "裁全身图" : "裁地点图";
+      const portrait = kind === "avatar" || kind === "full" || kind === "thinking";
+      const aspect = kind === "avatar" ? 1 : portrait ? 2 / 3 : 16 / 9;
+      const title = kind === "avatar" ? "裁头像" : kind === "thinking" ? "裁思考立绘" : kind === "full" ? "裁全身图" : "裁地点图";
       openCropper({
         file,
         aspect,
         title,
         mime: preferredImageMime(file.type, kind),
         onDone: async (savedPath) => {
-          if (kind === "avatar" || kind === "full") {
-            const fields = kind === "avatar" ? { avatarFile: savedPath } : { fullBodyFile: savedPath };
-            previews.set(`${input.dataset.person}:${kind === "avatar" ? "avatar" : "fullBody"}`, mediaUrl(savedPath));
+          if (portrait) {
+            const slot = kind === "avatar" ? "avatar" : kind === "thinking" ? "thinking" : "fullBody";
+            const fields =
+              kind === "avatar"
+                ? { avatarFile: savedPath }
+                : kind === "thinking"
+                  ? { thinkingFile: savedPath }
+                  : { fullBodyFile: savedPath };
+            previews.set(`${input.dataset.person}:${slot}`, mediaUrl(savedPath));
             await act({ type: "character.update", id: input.dataset.person, fields });
             return;
           }
@@ -1627,6 +1659,14 @@ function castOf(session) {
   return ids.map((id) => library.characters.find((item) => item.id === id)).filter(Boolean);
 }
 
+function stageSpeaker(session) {
+  if (thinkingSpeakerId) {
+    const person = library.characters.find((item) => item.id === thinkingSpeakerId);
+    if (person) return { id: person.id, name: person.name, src: pictureUrl(person, "avatar") };
+  }
+  return currentSpeaker(session);
+}
+
 function currentSpeaker(session) {
   const last = [...session.messages].reverse().find((item) => item.kind !== "system");
   const person = last ? library.characters.find((item) => item.id === last.speakerId) : null;
@@ -1638,7 +1678,37 @@ function pictureUrl(person, slot) {
   const preview = previews.get(`${person.id}:${slot}`);
   if (preview) return preview;
   if (slot === "avatar") return mediaUrl(person.avatarFile) || mediaUrl(person.fullBodyFile);
+  if (slot === "thinking") return mediaUrl(person.thinkingFile);
   return mediaUrl(person.fullBodyFile);
+}
+
+function watchSpeaking(token) {
+  return (async () => {
+    while (speakWatch === token) {
+      try {
+        const response = await fetch("/api/speaking", { cache: "no-store" });
+        const data = await response.json();
+        if (speakWatch !== token) return;
+        const next = String(data.speakerId || "");
+        if (next && next !== thinkingSpeakerId) {
+          thinkingSpeakerId = next;
+          if (speakWatch !== token) {
+            thinkingSpeakerId = "";
+            return;
+          }
+          if (view === "stage") render();
+        }
+      } catch {
+        // 暂时问不到是谁，就保持现在的立绘。这句结束时会换回全身图。
+      }
+      if (speakWatch !== token) return;
+      await delay(120);
+    }
+  })();
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function pictureOfLocation(place, slot) {

@@ -47,6 +47,22 @@ export function ensureCharacterPoses(library) {
   return { ...library, characters };
 }
 
+/**
+ * 思考立绘是可选的另一张全身图。旧档没有这个字段时补成空字符串，舞台上就继续用全身图。
+ */
+export function ensureThinkingFiles(library) {
+  if (!Array.isArray(library?.characters) || library.characters.length === 0) return library;
+  let changed = false;
+  const characters = library.characters.map((character) => {
+    const file = normalizeThinkingFile(character?.thinkingFile);
+    if (character && character.thinkingFile === file) return character;
+    changed = true;
+    return { ...character, thinkingFile: file };
+  });
+  if (!changed) return library;
+  return { ...library, characters };
+}
+
 export function createCharacter(library, kind) {
   if (!KINDS.has(kind)) throw new Error("人设只能是玩家或台上的角色。");
   const next = clone(library);
@@ -60,6 +76,7 @@ export function createCharacter(library, kind) {
     speechStyle: "",
     avatarFile: "",
     fullBodyFile: "",
+    thinkingFile: "",
     stagePose: freshStagePose(),
   };
   next.characters.push(character);
@@ -71,7 +88,7 @@ export function updateCharacter(library, id, fields) {
   const character = next.characters.find((item) => item.id === id);
   if (!character) throw new Error("找不到这张人设卡。");
   if (fields.name != null) character.name = requireText(fields.name, "人设要有名字。");
-  for (const key of ["summary", "personality", "speechStyle", "avatarFile", "fullBodyFile"]) {
+  for (const key of ["summary", "personality", "speechStyle", "avatarFile", "fullBodyFile", "thinkingFile"]) {
     if (fields[key] != null) character[key] = String(fields[key]).trim();
   }
   if (fields.stagePose != null) {
@@ -110,6 +127,11 @@ function clampPoseNumber(value, limit, fallback) {
   if (!Number.isFinite(number)) return fallback;
   const rounded = Math.round(number * 100) / 100;
   return Math.min(limit.max, Math.max(limit.min, rounded));
+}
+
+function normalizeThinkingFile(value) {
+  if (typeof value !== "string") return "";
+  return value.trim();
 }
 
 function storedPoseEquals(raw, pose) {

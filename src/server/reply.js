@@ -32,27 +32,38 @@ export async function replyToPlayer(library, text, complete, options = {}) {
       index,
       total: plan.speakers.length,
     });
+    // 只在这一句真正发给模型时标出是谁。说完、失败或中断都清掉，下一位再标下一位。
+    noteSpeaker(options, speaker.id);
     let result;
     try {
-      result = await complete(target, messages);
-    } catch {
-      result = { ok: false, message: "模型调用中断了。请再送一句。" };
-    }
-    if (!result?.ok || !String(result.text || "").trim()) {
-      const message = result?.message || "模型没有接上。请再试一次。";
-      next = appendSystemLine(next, message);
-      return { library: next, message, tone: "bad" };
-    }
-    try {
-      next = commitNpcReply(next, speaker.id, result.text);
-    } catch (error) {
-      const message = error instanceof Error && error.message ? error.message : "模型没有说出内容。";
-      next = appendSystemLine(next, message);
-      return { library: next, message, tone: "bad" };
+      try {
+        result = await complete(target, messages);
+      } catch {
+        result = { ok: false, message: "模型调用中断了。请再送一句。" };
+      }
+      if (!result?.ok || !String(result.text || "").trim()) {
+        const message = result?.message || "模型没有接上。请再试一次。";
+        next = appendSystemLine(next, message);
+        return { library: next, message, tone: "bad" };
+      }
+      try {
+        next = commitNpcReply(next, speaker.id, result.text);
+      } catch (error) {
+        const message = error instanceof Error && error.message ? error.message : "模型没有说出内容。";
+        next = appendSystemLine(next, message);
+        return { library: next, message, tone: "bad" };
+      }
+    } finally {
+      noteSpeaker(options, "");
     }
   }
   if (plan.coolDown) next = finishCoolDown(next);
   return { library: next, message: target.notice || "", tone: "ok" };
+}
+
+function noteSpeaker(options, id) {
+  if (typeof options.onSpeaker !== "function") return;
+  options.onSpeaker(String(id || ""));
 }
 
 async function routeOptions(library, options) {

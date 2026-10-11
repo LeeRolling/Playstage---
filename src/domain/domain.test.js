@@ -73,6 +73,8 @@ test("默认角色写下全身图路径", () => {
   assert.equal(astrid.fullBodyFile, "assets/defaults/characters/女/北欧/Astrid.png");
   assert.equal(nuanli.fullBodyFile, "assets/defaults/characters/女/东方/暖璃.png");
   assert.equal(chutang.fullBodyFile, "assets/defaults/characters/女/现代/初棠.png");
+  assert.equal(astrid.thinkingFile, "");
+  assert.equal(nuanli.thinkingFile, "");
 });
 
 test("说话里提到地点会换景，特殊情景没图时只做标记", () => {
@@ -406,7 +408,7 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
     stages: [{ id: "stage-frost" }],
     worldBooks: [{ id: "book-frost" }],
     settings: { spriteScale: "large", dialogScale: "short", uiSkin: "classic", uiSkinMode: "auto" },
-    characters: [{ id: "npc-astrid", stagePose: { x: 0, y: 0, scale: 1.15 } }],
+    characters: [{ id: "npc-astrid", stagePose: { x: 0, y: 0, scale: 1.15 }, thinkingFile: "" }],
   };
   assert.equal(migrateLibrary(stable), stable);
 
@@ -425,6 +427,62 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
   });
   assert.deepEqual(widened.characters[0].stagePose, { x: 100, y: -100, scale: 1.15 });
   assert.deepEqual(spec.limits.scale, { min: 0.4, max: 2.4, step: 0.05 });
+});
+
+test("思考立绘跟着人设保存，旧档缺了就是空", () => {
+  const seeded = createSeedLibrary();
+  for (const person of seeded.characters) assert.equal(person.thinkingFile, "");
+
+  const made = dispatch(seeded, { type: "character.create", kind: "npc" });
+  assert.equal(made.library.characters.at(-1).thinkingFile, "");
+  const player = dispatch(seeded, { type: "character.create", kind: "player" }).library.characters.at(-1);
+  assert.equal(player.thinkingFile, "");
+
+  const saved = dispatch(seeded, {
+    type: "character.update",
+    id: "npc-nuanli",
+    fields: { thinkingFile: " data/media/img-think.png " },
+  });
+  const nuanli = saved.library.characters.find((item) => item.id === "npc-nuanli");
+  assert.equal(nuanli.thinkingFile, "data/media/img-think.png");
+  assert.equal(nuanli.fullBodyFile, "assets/defaults/characters/女/东方/暖璃.png");
+  assert.equal(saved.library.characters.find((item) => item.id === "npc-yuetong").thinkingFile, "");
+
+  const kept = dispatch(saved.library, {
+    type: "character.update",
+    id: "npc-nuanli",
+    fields: { summary: "仍在" },
+  });
+  const keptNuanli = kept.library.characters.find((item) => item.id === "npc-nuanli");
+  assert.equal(keptNuanli.summary, "仍在");
+  assert.equal(keptNuanli.thinkingFile, "data/media/img-think.png");
+
+  const published = toPublicLibrary(kept.library);
+  assert.equal(published.characters.find((item) => item.id === "npc-nuanli").thinkingFile, "data/media/img-think.png");
+  const exported = dispatch(kept.library, { type: "transfer.export", kind: "characters" });
+  assert.equal(
+    exported.download.body.characters.find((item) => item.id === "npc-nuanli").thinkingFile,
+    "data/media/img-think.png",
+  );
+
+  const old = {
+    revision: 2,
+    stagePicked: true,
+    activeStageId: "stage-frost",
+    stages: [{ id: "stage-frost" }],
+    worldBooks: [{ id: "book-frost" }],
+    settings: { spriteScale: "large", dialogScale: "short", uiSkin: "classic", uiSkinMode: "auto" },
+    characters: [
+      { id: "npc-astrid", kind: "npc", name: "Astrid", fullBodyFile: "assets/defaults/characters/女/北欧/Astrid.png" },
+      { id: "npc-sigrid", thinkingFile: "  data/media/sigrid-think.png  " },
+      { id: "npc-elin", thinkingFile: 3 },
+    ],
+  };
+  const migrated = migrateLibrary(old);
+  assert.equal(migrated.characters[0].thinkingFile, "");
+  assert.equal(migrated.characters[0].fullBodyFile, "assets/defaults/characters/女/北欧/Astrid.png");
+  assert.equal(migrated.characters[1].thinkingFile, "data/media/sigrid-think.png");
+  assert.equal(migrated.characters[2].thinkingFile, "");
 });
 
 test("剧情包占位导出含前文提要，导入只登记", () => {

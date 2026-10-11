@@ -59,12 +59,16 @@ const types = {
 };
 
 let replying = false;
+let speakingId = "";
 const updateNotice = takeUpdateNote(root) || { message: "", tone: "ok" };
 const warmKeeper = createLocalWarmKeeper();
 
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url || "/", `http://${host}`);
+    if (url.pathname === "/api/speaking" && request.method === "GET") {
+      return send(response, 200, { speakerId: speakingId });
+    }
     if (url.pathname === "/api/bootstrap" && request.method === "GET") {
       const hardware = await readHardware();
       const ollamaReachable = await probeOllama(library.model?.localBaseUrl);
@@ -88,6 +92,7 @@ const server = http.createServer(async (request, response) => {
           });
         }
         replying = true;
+        speakingId = "";
         try {
           const outcome = await replyToPlayer(
             library,
@@ -98,7 +103,7 @@ const server = http.createServer(async (request, response) => {
               if (result.ok && keepAlive != null) warmKeeper.noteLocalChat(target);
               return result;
             },
-            { probeLocal: probeLocalReady },
+            { probeLocal: probeLocalReady, onSpeaker: noteSpeaker },
           );
           library = outcome.library;
           store.save(library);
@@ -109,6 +114,7 @@ const server = http.createServer(async (request, response) => {
             warm: warmKeeper.snapshot(),
           });
         } finally {
+          speakingId = "";
           replying = false;
         }
       }
@@ -259,6 +265,10 @@ server.on("error", (error) => {
   }
   process.exit(1);
 });
+
+function noteSpeaker(id) {
+  speakingId = String(id || "");
+}
 
 function send(response, status, body) {
   const raw = JSON.stringify(body);
