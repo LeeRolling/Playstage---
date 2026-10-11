@@ -397,6 +397,7 @@
       "speechStyle": "短句。",
       "avatarFile": "",
       "fullBodyFile": "",
+      "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
@@ -413,6 +414,7 @@
       "speechStyle": "短句。先说能不能，再说为什么。",
       "avatarFile": "",
       "fullBodyFile": "assets/defaults/characters/女/北欧/Astrid.png",
+      "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
@@ -429,6 +431,7 @@
       "speechStyle": "像在低声唱歌，一句里常带旧年。",
       "avatarFile": "",
       "fullBodyFile": "assets/defaults/characters/女/北欧/Sigrid.png",
+      "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
@@ -445,6 +448,7 @@
       "speechStyle": "先报数字和人名，再给判断。",
       "avatarFile": "",
       "fullBodyFile": "assets/defaults/characters/女/北欧/Elin.png",
+      "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
@@ -461,6 +465,7 @@
       "speechStyle": "句子整。先把问题问清楚，再给一个能核对的说法。",
       "avatarFile": "",
       "fullBodyFile": "assets/defaults/characters/女/东方/暖璃.png",
+      "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
@@ -477,6 +482,7 @@
       "speechStyle": "快，爱接话。偶尔跑远，再自己绕回来。",
       "avatarFile": "",
       "fullBodyFile": "assets/defaults/characters/女/东方/月曈.png",
+      "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
@@ -493,6 +499,7 @@
       "speechStyle": "慢。不重复。没问到的不说。",
       "avatarFile": "",
       "fullBodyFile": "assets/defaults/characters/女/东方/清言.png",
+      "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
@@ -509,6 +516,7 @@
       "speechStyle": "口语。爱提街道、后门和「这条线今晚还亮着」。",
       "avatarFile": "",
       "fullBodyFile": "assets/defaults/characters/女/现代/初棠.png",
+      "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
@@ -525,6 +533,7 @@
       "speechStyle": "可以很长，但收在她自己的标准上。催促只会让她更慢。",
       "avatarFile": "",
       "fullBodyFile": "assets/defaults/characters/女/现代/星璇.png",
+      "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
@@ -541,6 +550,7 @@
       "speechStyle": "轻，慢。一句里留一点没说完的笑。",
       "avatarFile": "",
       "fullBodyFile": "assets/defaults/characters/女/现代/雪璟.png",
+      "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
@@ -581,9 +591,11 @@
   "transferLog": [],
   "model": {
     "provider": "local",
+    "routeMode": "auto",
     "localBaseUrl": "http://127.0.0.1:11434/v1",
     "localModel": "",
     "localModels": [],
+    "localKeepWarm": false,
     "cloudBaseUrl": "",
     "cloudApiKey": "",
     "cloudModel": "",

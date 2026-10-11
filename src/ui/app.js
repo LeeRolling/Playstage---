@@ -38,6 +38,9 @@ let paintedView = null;
 let toastTimer = 0;
 let pendingAnchor = "";
 let sending = false;
+let thinkingSpeakerId = "";
+let speakWatch = 0;
+let localWarm = { pinned: false, message: "", idleMinutes: 10 };
 let composerDraft = "";
 const previews = new Map();
 const sceneCache = new Map();
@@ -49,6 +52,7 @@ async function boot() {
     const response = await fetch("/api/bootstrap");
     const data = await response.json();
     library = data.library;
+    if (data.warm) localWarm = data.warm;
     hardware = data.hardware;
     prerequisites = data.prerequisites;
     dataFile = data.dataFile || "";
@@ -154,7 +158,7 @@ function sceneBackgroundHtml(sceneUrl, sceneOk, sceneMissing) {
 function stageHtml(session, scene, sceneUrl, sceneMissing) {
   const missingFile = scene.backgroundSet && sceneUrl && sceneMissing;
   const cast = castOf(session);
-  const speaker = currentSpeaker(session);
+  const speaker = stageSpeaker(session);
   return `
     <div class="plaque"><span>${esc(scene.stageName || "选择舞台")}</span><strong>${esc(scene.locationName)}</strong></div>
     <div class="stage-scale">${scaleControlsHtml()}${skinControlsHtml()}</div>
@@ -213,12 +217,15 @@ function ribbonHtml(scene, missingFile) {
 }
 
 function spriteHtml(person, speaker) {
-  const src = pictureUrl(person, "fullBody");
+  const thinkingSrc = thinkingSpeakerId === person.id ? pictureUrl(person, "thinking") : "";
+  const src = thinkingSrc || pictureUrl(person, "fullBody");
   const someoneSpeaking = Boolean(speaker?.id) && speaker.id !== "system";
   const quiet = someoneSpeaking && person.id !== speaker.id;
-  const image = src ? `<img alt="${esc(person.name)}的立绘" src="${esc(src)}" />` : "";
+  const image = src
+    ? `<img alt="${esc(person.name)}的立绘" src="${esc(src)}" data-art="${thinkingSrc ? "thinking" : "full"}" />`
+    : "";
   const pose = poseOf(person);
-  return `<div class="sprite ${quiet ? "is-quiet" : "is-speaking"}" style="--pose-x:${pose.x};--pose-y:${pose.y};--pose-scale:${pose.scale}"><div class="figure" style="--accent:${accent(person.id)}">${image}</div></div>`;
+  return `<div class="sprite ${quiet ? "is-quiet" : "is-speaking"}" data-person="${esc(person.id)}" style="--pose-x:${pose.x};--pose-y:${pose.y};--pose-scale:${pose.scale}"><div class="figure" style="--accent:${accent(person.id)}">${image}</div></div>`;
 }
 
 function ledgerHtml() {
@@ -370,7 +377,7 @@ function cardsHtml() {
   const players = library.characters.filter((item) => item.kind === "player");
   return `
     <h2>人设卡</h2>
-    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像和全身图都可以裁一下再留下。新裁的头像和全身图会存成 PNG，下面的路径会换成新文件，透明底会留下来。原来的图还在文件夹里，不会被删掉。左右、上下和放大记在这张卡上，每一场都用这一套。</p>
+    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像、全身图和思考立绘都可以裁一下再留下。新裁的图会存成 PNG，下面的路径会换成新文件，透明底会留下来。原来的图还在文件夹里，不会被删掉。左右、上下和放大记在这张卡上，每一场都用这一套。</p>
     <div class="row">
       <button class="primary" type="button" data-new="player">新的玩家人设</button>
       <button class="ghost" type="button" data-new="npc">新的角色（记在当前舞台）</button>
@@ -390,12 +397,14 @@ function cardsHtml() {
 function cardHtml(person) {
   const avatar = pictureUrl(person, "avatar");
   const body = pictureUrl(person, "fullBody");
+  const thinking = person.kind === "npc" ? pictureUrl(person, "thinking") : "";
   return `
     <form class="card" data-card="${esc(person.id)}">
       <h3>${person.kind === "player" ? "玩家人设" : esc(person.name)}</h3>
       <div class="portrait-row">
         ${avatar ? `<img class="thumb" alt="" src="${esc(avatar)}" />` : `<div class="thumb"></div>`}
         ${body ? `<img class="thumb" alt="" src="${esc(body)}" />` : `<div class="thumb"></div>`}
+        ${person.kind === "npc" ? (thinking ? `<img class="thumb" alt="" src="${esc(thinking)}" />` : `<div class="thumb"></div>`) : ""}
       </div>
       <label>名字</label>
       <input name="name" type="text" value="${esc(person.name)}" />
@@ -411,6 +420,7 @@ function cardHtml(person) {
       <label>全身图 / 立绘（可裁成立绘）</label>
       <input type="file" accept="image/*" data-crop="full" data-person="${esc(person.id)}" />
       <p class="help">${person.fullBodyFile ? `已记下 ${esc(person.fullBodyFile)}` : "没有全身图时，舞台上用剪影占位。"}</p>
+      ${thinkingFieldsHtml(person)}
       ${poseFieldsHtml(person)}
       <div class="row">
         <button class="primary" type="submit">保存人设</button>
@@ -418,6 +428,17 @@ function cardHtml(person) {
       </div>
     </form>
   `;
+}
+
+function thinkingFieldsHtml(person) {
+  if (person.kind !== "npc") return "";
+  const help = person.thinkingFile
+    ? `已记下 ${esc(person.thinkingFile)}。只在这个人等模型接话时显示，说完就换回全身图。`
+    : "可选。只在这个人等模型接话时显示，说完就换回全身图。不设的话，一直用全身图。";
+  return `
+      <label>思考</label>
+      <input type="file" accept="image/*" data-crop="thinking" data-person="${esc(person.id)}" />
+      <p class="help">${help}</p>`;
 }
 
 function sessionHtml() {
@@ -524,32 +545,49 @@ function modelHtml() {
     const untouched = slot.id === "slot-extra" && !slot.apiKeySet && !slot.model && !slot.baseUrl && !(slot.characterIds || []).length;
     return !untouched;
   });
+  const route = model.routeMode === "local" || model.routeMode === "cloud" ? model.routeMode : "auto";
   return `
     <h2>模型设置</h2>
-    <p class="help">剧戏台不附带、也不下载模型。选下面的一家，点「保存设置」之后，上台说话就会由它来接话。测试云端之前也要先保存，否则用的还是上次留下的钥匙。</p>
+    <p class="help">剧戏台不附带、也不下载模型。先选接话方式，再把本机和云端填好，点「保存设置」。测试云端之前也要先保存，否则用的还是上次留下的钥匙。</p>
     ${model.remindRetest ? `<div class="callout">这次打开软件，请再测一次本机连接。上次的结果还留在下面，但不代表现在仍然通着。</div>` : ""}
-    <div class="callout">需人工完成：本机请先自己安装并打开 Ollama，再装好模型（例如你准备的 Qwen）。云端请到智谱或阿里云百炼自己申请钥匙。只建议从官方渠道获取官方开源模型。</div>
+    <div class="callout">需人工完成：本机请先自己安装并打开 Ollama，再装好模型（例如你准备的 Qwen）。云端请到智谱、阿里云百炼，或另一家（例如 DeepSeek）自己申请钥匙。只建议从官方渠道获取官方开源模型。</div>
     ${prerequisites ? `<p class="help">${esc(prerequisites.ollama)}</p>` : ""}
     <form id="model-form" class="grid" style="margin-top:14px">
+      <div class="block" style="grid-column: 1 / -1">
+        <h3>上台时怎么接话</h3>
+        <label class="check"><input type="radio" name="routeMode" value="auto" ${route === "auto" ? "checked" : ""} /> 自动：本机优先，否则用云端</label>
+        <label class="check"><input type="radio" name="routeMode" value="local" ${route === "local" ? "checked" : ""} /> 只用本机</label>
+        <label class="check"><input type="radio" name="routeMode" value="cloud" ${route === "cloud" ? "checked" : ""} /> 只用云端</label>
+        <p class="help">默认是自动。本机填了模型名，并且 Ollama 开着、那个模型也在，就用本机。本机没选、没装上、连不上，或你把模型名清掉了，就改用已经填好钥匙和模型名的云端，不用再回这一页点选本机。两边都没准备好时才会拦住。</p>
+        ${model.routeHint ? `<p class="model-status">${esc(model.routeHint)}</p>` : ""}
+      </div>
       <div class="block">
         <h3>本机 Ollama</h3>
-        <label class="check"><input type="radio" name="provider" value="local" ${model.provider === "local" ? "checked" : ""} /> 用这台电脑演戏</label>
+        <label class="check"><input type="radio" name="provider" value="local" ${model.provider === "local" ? "checked" : ""} /> 云端按填好的顺序来</label>
+        <p class="help">不指定某一家时，自动会先用另一家（例如 DeepSeek），再试智谱，再试通义千问，用第一家填齐钥匙和模型名的。</p>
         <label>本机地址</label>
         <input name="localBaseUrl" type="url" value="${esc(model.localBaseUrl)}" />
         <p class="help">Ollama 打开后，地址一般是 http://127.0.0.1:11434 。写成 http://127.0.0.1:11434/v1 也可以。先点「读取本机模型」，再在下面选中你装好的那个。本地模型加载速度会与硬件直接关联。</p>
         <label>读取到的模型</label>
         <select id="local-model-pick">
-          <option value="">${known.length ? "从列表里选" : "还没有列表。先读取本机模型"}</option>
+          <option value="">${known.length ? "不选本机模型" : "还没有列表。先读取本机模型"}</option>
           ${known.map((name) => `<option value="${esc(name)}" ${name === model.localModel ? "selected" : ""}>${esc(name)}</option>`).join("")}
         </select>
         <label>模型名</label>
         <input name="localModel" type="text" value="${esc(model.localModel)}" placeholder="例如你在 Ollama 里看到的 qwen" />
         ${localStatus ? `<p class="model-status">${esc(localStatus)}</p>` : `<p class="help">读取成功后，这里会留下一句：连上了。之后上台就会用它接话。</p>`}
-        <div class="row"><button class="ghost" type="button" id="test-model">读取本机模型</button></div>
+        <label class="check"><input name="localKeepWarm" type="checkbox" ${model.localKeepWarm ? "checked" : ""} /> 预热加载</label>
+        <p class="help">勾上后，选中的本机模型会留在显存里，上台不用每次重新加载再卸掉。大约 ${Number(model.localWarmIdleMinutes) || 10} 分钟没有用本机接话，或点「卸下」，就会放开。关掉这个勾选再保存，也会卸下。自动改走云端时，不会把预热带进云端请求，本机这块显存仍会在空闲后放开。</p>
+        ${localWarm?.message ? `<p class="model-status">${esc(localWarm.message)}</p>` : ""}
+        <div class="row">
+          <button class="ghost" type="button" id="test-model">读取本机模型</button>
+          <button class="ghost" type="button" id="warm-model">现在预热</button>
+          <button class="ghost" type="button" id="unload-model">卸下</button>
+        </div>
       </div>
       <div class="block">
         <h3>智谱 GLM</h3>
-        <label class="check"><input type="radio" name="provider" value="zhipu" ${model.provider === "zhipu" ? "checked" : ""} /> 用智谱演戏</label>
+        <label class="check"><input type="radio" name="provider" value="zhipu" ${model.provider === "zhipu" ? "checked" : ""} /> 云端优先用智谱</label>
         <p class="help">地址已经填好：${esc(zhipu.baseUrl || "https://open.bigmodel.cn/api/paas/v4")} 。到智谱开放平台申请钥匙，粘贴在下面。钥匙只存在这台电脑的资料里。</p>
         <label>模型名</label>
         <input name="zhipuModel" type="text" value="${esc(zhipu.model || "")}" placeholder="例如 glm-4-flash" />
@@ -560,7 +598,7 @@ function modelHtml() {
       </div>
       <div class="block">
         <h3>通义千问</h3>
-        <label class="check"><input type="radio" name="provider" value="qwen" ${model.provider === "qwen" ? "checked" : ""} /> 用通义千问演戏</label>
+        <label class="check"><input type="radio" name="provider" value="qwen" ${model.provider === "qwen" ? "checked" : ""} /> 云端优先用通义千问</label>
         <p class="help">地址已经填好：${esc(qwen.baseUrl || "https://dashscope.aliyuncs.com/compatible-mode/v1")} 。到阿里云百炼申请钥匙，粘贴在下面。钥匙只存在这台电脑的资料里。</p>
         <label>模型名</label>
         <input name="qwenModel" type="text" value="${esc(qwen.model || "")}" placeholder="例如 qwen-plus" />
@@ -571,8 +609,8 @@ function modelHtml() {
       </div>
       <div class="block">
         <h3>另一家云端（可选）</h3>
-        <label class="check"><input type="radio" name="provider" value="cloud" ${model.provider === "cloud" ? "checked" : ""} /> 用这一家演戏</label>
-        <p class="help">DeepSeek 也填在这里。地址常见是 https://api.deepseek.com ，模型名按你账号里的来，例如 deepseek-chat 或 DeepSeek-Flash。先保存，再上台。</p>
+        <label class="check"><input type="radio" name="provider" value="cloud" ${model.provider === "cloud" ? "checked" : ""} /> 云端优先用这一家</label>
+        <p class="help">DeepSeek 也填在这里。地址常见是 https://api.deepseek.com ，模型名按你账号里的来，例如 deepseek-chat 或 DeepSeek-Flash。自动时，本机没选上或连不上，就会改用这里，不用再点回本机。</p>
         <label>地址</label>
         <input name="cloudBaseUrl" type="url" value="${esc(model.cloudBaseUrl)}" placeholder="OpenAI 兼容地址，以 /v1 结尾常见" />
         <label>模型名</label>
@@ -1077,9 +1115,13 @@ function bind() {
     if (!text) return;
     composerDraft = "";
     sending = true;
-    const localModel = library?.model?.provider === "local";
+    speakWatch += 1;
+    const watchToken = speakWatch;
+    thinkingSpeakerId = "";
+    const localModel = expectsLocalWait(library?.model);
     notice = { tone: "ok", text: waitingNotice(localModel, false) };
     render();
+    watchSpeaking(watchToken);
     const waitTimer = setTimeout(() => {
       if (!sending) return;
       notice = { tone: "ok", text: waitingNotice(localModel, true) };
@@ -1087,6 +1129,8 @@ function bind() {
     }, localModel ? 20000 : 12000);
     const ok = await act({ type: "session.send", text }, { render: false });
     clearTimeout(waitTimer);
+    speakWatch += 1;
+    thinkingSpeakerId = "";
     sending = false;
     if (!ok) composerDraft = text;
     render();
@@ -1142,17 +1186,24 @@ function bind() {
       input.value = "";
       if (!file) return;
       const kind = input.dataset.crop;
-      const aspect = kind === "avatar" ? 1 : kind === "full" ? 2 / 3 : 16 / 9;
-      const title = kind === "avatar" ? "裁头像" : kind === "full" ? "裁全身图" : "裁地点图";
+      const portrait = kind === "avatar" || kind === "full" || kind === "thinking";
+      const aspect = kind === "avatar" ? 1 : portrait ? 2 / 3 : 16 / 9;
+      const title = kind === "avatar" ? "裁头像" : kind === "thinking" ? "裁思考立绘" : kind === "full" ? "裁全身图" : "裁地点图";
       openCropper({
         file,
         aspect,
         title,
         mime: preferredImageMime(file.type, kind),
         onDone: async (savedPath) => {
-          if (kind === "avatar" || kind === "full") {
-            const fields = kind === "avatar" ? { avatarFile: savedPath } : { fullBodyFile: savedPath };
-            previews.set(`${input.dataset.person}:${kind === "avatar" ? "avatar" : "fullBody"}`, mediaUrl(savedPath));
+          if (portrait) {
+            const slot = kind === "avatar" ? "avatar" : kind === "thinking" ? "thinking" : "fullBody";
+            const fields =
+              kind === "avatar"
+                ? { avatarFile: savedPath }
+                : kind === "thinking"
+                  ? { thinkingFile: savedPath }
+                  : { fullBodyFile: savedPath };
+            previews.set(`${input.dataset.person}:${slot}`, mediaUrl(savedPath));
             await act({ type: "character.update", id: input.dataset.person, fields });
             return;
           }
@@ -1251,13 +1302,14 @@ function bind() {
 
   app.querySelector("#local-model-pick")?.addEventListener("change", (event) => {
     const input = app.querySelector("#model-form input[name=localModel]");
-    if (input && event.target.value) input.value = event.target.value;
+    if (input) input.value = event.target.value;
   });
   app.querySelector("#model-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     act({
       type: "model.update",
+      routeMode: data.get("routeMode"),
       provider: data.get("provider"),
       localBaseUrl: data.get("localBaseUrl"),
       localModel: data.get("localModel"),
@@ -1271,9 +1323,12 @@ function bind() {
       qwenModel: data.get("qwenModel"),
       qwenApiKey: data.get("qwenApiKey"),
       clearQwenApiKey: data.get("clearQwenApiKey") === "on",
+      localKeepWarm: data.get("localKeepWarm") === "on",
     });
   });
   app.querySelector("#test-model")?.addEventListener("click", testModel);
+  app.querySelector("#warm-model")?.addEventListener("click", warmModel);
+  app.querySelector("#unload-model")?.addEventListener("click", unloadModel);
   app.querySelectorAll(".slot-form").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -1339,6 +1394,7 @@ async function act(action, options = {}) {
       return false;
     }
     library = data.library;
+    if (data.warm) localWarm = data.warm;
     notice = data.message ? { tone: data.tone === "bad" ? "bad" : "ok", text: data.message } : null;
     if (data.download) download(data.download);
     if (options.render !== false) render();
@@ -1357,9 +1413,40 @@ async function testModel() {
     const response = await fetch("/api/model/test", { method: "POST" });
     const data = await response.json();
     if (data.library) library = data.library;
+    if (data.warm) localWarm = data.warm;
     notice = { tone: data.ok ? "ok" : "bad", text: data.message };
   } catch {
     notice = { tone: "bad", text: "测试没有完成。请确认启动窗口还在。" };
+  }
+  render();
+}
+
+async function warmModel() {
+  notice = { tone: "ok", text: "正在把本机模型读进显存，第一次会慢一些。" };
+  render();
+  try {
+    const response = await fetch("/api/model/warm", { method: "POST" });
+    const data = await response.json();
+    if (data.library) library = data.library;
+    if (data.warm) localWarm = data.warm;
+    notice = { tone: data.ok ? "ok" : "bad", text: data.message };
+  } catch {
+    notice = { tone: "bad", text: "预热没有完成。请确认启动窗口还在，Ollama 也已经打开。" };
+  }
+  render();
+}
+
+async function unloadModel() {
+  notice = { tone: "ok", text: "正在卸下本机模型…" };
+  render();
+  try {
+    const response = await fetch("/api/model/unload", { method: "POST" });
+    const data = await response.json();
+    if (data.library) library = data.library;
+    if (data.warm) localWarm = data.warm;
+    notice = { tone: data.ok ? "ok" : "bad", text: data.message };
+  } catch {
+    notice = { tone: "bad", text: "卸下没有完成。请确认启动窗口还在。" };
   }
   render();
 }
@@ -1379,6 +1466,13 @@ async function testSlot(slotId) {
     notice = { tone: "bad", text: "这家云端没有测完。请确认启动窗口还在。" };
   }
   render();
+}
+
+function expectsLocalWait(model) {
+  const mode = model?.routeMode || "auto";
+  if (mode === "cloud") return false;
+  if (mode === "local") return true;
+  return Boolean(String(model?.localModel || "").trim());
 }
 
 function waitingNotice(local, late) {
@@ -1565,6 +1659,14 @@ function castOf(session) {
   return ids.map((id) => library.characters.find((item) => item.id === id)).filter(Boolean);
 }
 
+function stageSpeaker(session) {
+  if (thinkingSpeakerId) {
+    const person = library.characters.find((item) => item.id === thinkingSpeakerId);
+    if (person) return { id: person.id, name: person.name, src: pictureUrl(person, "avatar") };
+  }
+  return currentSpeaker(session);
+}
+
 function currentSpeaker(session) {
   const last = [...session.messages].reverse().find((item) => item.kind !== "system");
   const person = last ? library.characters.find((item) => item.id === last.speakerId) : null;
@@ -1576,7 +1678,37 @@ function pictureUrl(person, slot) {
   const preview = previews.get(`${person.id}:${slot}`);
   if (preview) return preview;
   if (slot === "avatar") return mediaUrl(person.avatarFile) || mediaUrl(person.fullBodyFile);
+  if (slot === "thinking") return mediaUrl(person.thinkingFile);
   return mediaUrl(person.fullBodyFile);
+}
+
+function watchSpeaking(token) {
+  return (async () => {
+    while (speakWatch === token) {
+      try {
+        const response = await fetch("/api/speaking", { cache: "no-store" });
+        const data = await response.json();
+        if (speakWatch !== token) return;
+        const next = String(data.speakerId || "");
+        if (next && next !== thinkingSpeakerId) {
+          thinkingSpeakerId = next;
+          if (speakWatch !== token) {
+            thinkingSpeakerId = "";
+            return;
+          }
+          if (view === "stage") render();
+        }
+      } catch {
+        // 暂时问不到是谁，就保持现在的立绘。这句结束时会换回全身图。
+      }
+      if (speakWatch !== token) return;
+      await delay(120);
+    }
+  })();
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function pictureOfLocation(place, slot) {

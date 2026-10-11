@@ -1,7 +1,16 @@
 /**
  * 向外调用模型。只在本机服务里发生，界面不直接请求云端。
  * 智谱、通义千问和 Ollama 的 OpenAI 兼容地址都走同一条对话接口。
+ * 本机预热走 Ollama 自己的 /api/generate：-1 留在显存，0 马上卸下。
  */
+
+import {
+  LOCAL_KEEP_ALIVE_PIN,
+  LOCAL_KEEP_ALIVE_RELEASE,
+  LOCAL_WARM_IDLE_MINUTES,
+  resolveRouteMode,
+  shouldReleaseLocalWarm,
+} from "../domain/models.js";
 
 const LOCAL_COLD_TIMEOUT_MS = 240_000;
 const LOCAL_WARM_TIMEOUT_MS = 120_000;
@@ -91,18 +100,19 @@ export function explainNetworkError(error, target) {
   return "连不上这家云端。请检查网络，以及「模型」页里的地址和钥匙。";
 }
 
-export async function listModels(target, fetchImpl = fetch) {
+export async function listModels(target, fetchImpl = fetch, options = {}) {
   const urls = resolveModelListUrls(target?.baseUrl);
   if (!urls.length) {
     return { ok: false, models: [], status: 0, message: "地址读不懂。请填写 http 开头的本机或云端地址。" };
   }
+  const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 4000;
   let lastStatus = 0;
   let lastMessage = "";
   for (const url of urls) {
     try {
       const response = await fetchImpl(url, {
         headers: authHeaders(target?.apiKey),
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       lastStatus = response.status;
       if (!response.ok) {
@@ -116,6 +126,21 @@ export async function listModels(target, fetchImpl = fetch) {
     }
   }
   return { ok: false, models: [], status: lastStatus, message: lastMessage || "没有读到模型列表。" };
+}
+
+/** 本机模型名已经填了之后，短问一次 Ollama：连不上或列表里没有，就让自动改走云端。 */
+export async function probeLocalReady(target, fetchImpl = fetch) {
+  const listed = await listModels({ baseUrl: target?.baseUrl, apiKey: "" }, fetchImpl, { timeoutMs: 1500 });
+  if (!listed.ok) return { ok: false, reason: "unreachable" };
+  const wanted = String(target?.model || "").trim();
+  if (!wanted || !listed.models.length || !modelNameInstalled(listed.models, wanted)) {
+    return { ok: false, reason: "missing" };
+  }
+  return { ok: true, reason: "" };
+}
+
+function modelNameInstalled(names, wanted) {
+  return names.some((name) => name === wanted || name.startsWith(`${wanted}:`) || wanted.startsWith(`${name}:`));
 }
 
 export function looksLikeDeepSeek(target) {
@@ -210,6 +235,7 @@ function chatBody(target, messages, options) {
     stream: options.stream !== false,
   };
   if (options.disableThinking) body.thinking = { type: "disabled" };
+  if (options.keepAlive != null && !target?.apiKey) body.keep_alive = options.keepAlive;
   return body;
 }
 
@@ -284,6 +310,183 @@ function parseEventStream(raw) {
 
 function extractReply(payload) {
   return extractPiece(payload).trim();
+}
+
+export function ollamaGenerateUrl(baseUrl) {
+  const root = String(baseUrl || "").trim().replace(/\/$/, "");
+  if (!root) return "";
+  let url;
+  try {
+    url = new URL(root);
+  } catch {
+    return "";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+  let path = url.pathname.replace(/\/$/, "");
+  if (path.endsWith("/v1")) path = path.slice(0, -3);
+  url.pathname = `${path}/api/generate`.replace(/\/{2,}/g, "/");
+  return url.toString().replace(/\/$/, "");
+}
+
+export function warmStatusMessage(kind) {
+  if (kind === "pinning") return "正在把本机模型读进显存，第一次会慢一些。";
+  if (kind === "pinned") {
+    return `本机模型已留在显存里。上台会快一些。大约 ${LOCAL_WARM_IDLE_MINUTES} 分钟没有用本机接话，会自动放开。`;
+  }
+  if (kind === "released") return "本机模型已从显存卸下。";
+  if (kind === "idle") return `大约 ${LOCAL_WARM_IDLE_MINUTES} 分钟没有用本机接话，本机模型已从显存放开。`;
+  return "";
+}
+
+export async function setLocalKeepAlive(target, keepAlive, fetchImpl = fetch) {
+  const url = ollamaGenerateUrl(target?.baseUrl);
+  const name = String(target?.model || "").trim();
+  if (!url || !name) {
+    return { ok: false, message: "还没有选择本机模型，没法预热。请先读取并选中一个。剧戏台不下载模型。" };
+  }
+  const releasing = keepAlive === LOCAL_KEEP_ALIVE_RELEASE;
+  try {
+    const response = await fetchImpl(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: name, keep_alive: keepAlive, stream: false }),
+      signal: AbortSignal.timeout(releasing ? 8000 : 240_000),
+    });
+    await response.text();
+    if (!response.ok) {
+      return {
+        ok: false,
+        message: releasing
+          ? "卸下没有完成。请确认 Ollama 还开着。"
+          : "预热没有完成。请确认 Ollama 已打开，并且这个模型已经装好。剧戏台不下载模型。",
+      };
+    }
+    return { ok: true, message: warmStatusMessage(releasing ? "released" : "pinned") };
+  } catch (error) {
+    const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
+    if (releasing) return { ok: false, message: "卸下没有完成。请确认 Ollama 还开着。" };
+    if (timedOut) return { ok: false, message: "预热等得太久了。模型可能还在读进显卡，可以再点一次「现在预热」。" };
+    return { ok: false, message: "连不上本机 Ollama，没法预热。请先自己打开 Ollama。剧戏台不下载模型。" };
+  }
+}
+
+export function createLocalWarmKeeper(options = {}) {
+  const idleMs = options.idleMs || LOCAL_WARM_IDLE_MINUTES * 60 * 1000;
+  const now = options.now || Date.now;
+  const setKeepAlive = options.setKeepAlive || ((target, keepAlive) => setLocalKeepAlive(target, keepAlive, options.fetchImpl));
+  let pinned = false;
+  let modelName = "";
+  let baseUrl = "";
+  let lastLocalUseAt = 0;
+  let message = "";
+  let epoch = 0;
+
+  function snapshot() {
+    return {
+      pinned,
+      model: modelName,
+      message,
+      idleMinutes: Math.round(idleMs / 60_000),
+    };
+  }
+
+  function noteLocalChat(target) {
+    epoch += 1;
+    pinned = true;
+    modelName = String(target?.model || modelName || "").trim();
+    baseUrl = String(target?.baseUrl || baseUrl || "").trim();
+    lastLocalUseAt = now();
+    message = warmStatusMessage("pinned");
+  }
+
+  async function pin(target) {
+    const mine = ++epoch;
+    modelName = String(target?.model || "").trim();
+    baseUrl = String(target?.baseUrl || "").trim();
+    message = warmStatusMessage("pinning");
+    const result = await setKeepAlive({ baseUrl, model: modelName }, LOCAL_KEEP_ALIVE_PIN);
+    if (mine !== epoch) return result;
+    if (result.ok) {
+      pinned = true;
+      lastLocalUseAt = now();
+      message = result.message || warmStatusMessage("pinned");
+    } else {
+      pinned = false;
+      message = result.message;
+    }
+    return { ...result, message };
+  }
+
+  async function release(reason = "released", targetOverride) {
+    const mine = ++epoch;
+    if (targetOverride?.model) {
+      modelName = String(targetOverride.model || "").trim();
+      baseUrl = String(targetOverride.baseUrl || baseUrl || "").trim();
+    }
+    const target = { baseUrl, model: modelName };
+    if (!target.model) {
+      pinned = false;
+      message = warmStatusMessage(reason);
+      return { ok: true, message };
+    }
+    const result = await setKeepAlive(target, LOCAL_KEEP_ALIVE_RELEASE);
+    if (mine !== epoch) return result;
+    if (result.ok) {
+      pinned = false;
+      message = reason === "idle" ? warmStatusMessage("idle") : result.message || warmStatusMessage("released");
+    } else {
+      message = result.message;
+    }
+    return { ...result, message };
+  }
+
+  function holds(model) {
+    return Boolean(model?.localKeepWarm)
+      && resolveRouteMode(model) !== "cloud"
+      && String(model?.localModel || "").trim() === modelName
+      && Boolean(modelName);
+  }
+
+  async function tick(model) {
+    if (!pinned) return snapshot();
+    const hold = holds(model);
+    const idle = shouldReleaseLocalWarm({
+      keepWarm: hold,
+      pinned: true,
+      lastLocalUseAt,
+      now: now(),
+      idleMs,
+    });
+    if (!hold || idle) await release(hold ? "idle" : "released");
+    return snapshot();
+  }
+
+  async function onModelSaved(before, after) {
+    const beforeName = String(before?.localModel || "").trim();
+    const afterName = String(after?.localModel || "").trim();
+    const beforeOn = Boolean(before?.localKeepWarm);
+    const afterOn = Boolean(after?.localKeepWarm);
+    const wasCloud = resolveRouteMode(before) === "cloud";
+    const cloudOnly = resolveRouteMode(after) === "cloud";
+    const notes = [];
+    const drop = (beforeOn && !afterOn) || cloudOnly || !afterName || (beforeName && beforeName !== afterName);
+    if (drop && (pinned || beforeOn) && (modelName || beforeName)) {
+      if (beforeName && beforeName !== modelName) {
+        modelName = beforeName;
+        baseUrl = String(before?.localBaseUrl || baseUrl || "").trim();
+      }
+      const result = await release("released");
+      notes.push(result.message);
+    }
+    const arm = afterOn && afterName && !cloudOnly && (!beforeOn || beforeName !== afterName || wasCloud);
+    if (arm) {
+      notes.push(warmStatusMessage("pinning"));
+      pin({ baseUrl: after.localBaseUrl, model: afterName }).catch(() => {});
+    }
+    return notes.filter(Boolean).join("");
+  }
+
+  return { snapshot, noteLocalChat, pin, release, tick, onModelSaved };
 }
 
 function extractPiece(payload) {

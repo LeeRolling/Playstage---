@@ -9,17 +9,18 @@ import {
   buildActingMessages,
   commitNpcReply,
   finishCoolDown,
+  localRouteProbe,
   planSpeakers,
   sendPlayerLine,
 } from "../domain/index.js";
 
-export async function replyToPlayer(library, text, complete) {
+export async function replyToPlayer(library, text, complete, options = {}) {
   let next = sendPlayerLine(library, text);
   const plan = planSpeakers(next);
   if (!plan.speakers.length) {
     return { library: next, message: "", tone: "ok" };
   }
-  const target = actingTarget(next);
+  const target = actingTarget(next, await routeOptions(next, options));
   if (!target.ok) {
     next = appendSystemLine(next, target.message);
     return { library: next, message: target.message, tone: "bad" };
@@ -31,25 +32,53 @@ export async function replyToPlayer(library, text, complete) {
       index,
       total: plan.speakers.length,
     });
+    // 只在这一句真正发给模型时标出是谁。说完、失败或中断都清掉，下一位再标下一位。
+    noteSpeaker(options, speaker.id);
     let result;
     try {
-      result = await complete(target, messages);
-    } catch {
-      result = { ok: false, message: "模型调用中断了。请再送一句。" };
-    }
-    if (!result?.ok || !String(result.text || "").trim()) {
-      const message = result?.message || "模型没有接上。请再试一次。";
-      next = appendSystemLine(next, message);
-      return { library: next, message, tone: "bad" };
-    }
-    try {
-      next = commitNpcReply(next, speaker.id, result.text);
-    } catch (error) {
-      const message = error instanceof Error && error.message ? error.message : "模型没有说出内容。";
-      next = appendSystemLine(next, message);
-      return { library: next, message, tone: "bad" };
+      try {
+        result = await complete(target, messages);
+      } catch {
+        result = { ok: false, message: "模型调用中断了。请再送一句。" };
+      }
+      if (!result?.ok || !String(result.text || "").trim()) {
+        const message = result?.message || "模型没有接上。请再试一次。";
+        next = appendSystemLine(next, message);
+        return { library: next, message, tone: "bad" };
+      }
+      try {
+        next = commitNpcReply(next, speaker.id, result.text);
+      } catch (error) {
+        const message = error instanceof Error && error.message ? error.message : "模型没有说出内容。";
+        next = appendSystemLine(next, message);
+        return { library: next, message, tone: "bad" };
+      }
+    } finally {
+      noteSpeaker(options, "");
     }
   }
   if (plan.coolDown) next = finishCoolDown(next);
-  return { library: next, message: "", tone: "ok" };
+  return { library: next, message: target.notice || "", tone: "ok" };
+}
+
+function noteSpeaker(options, id) {
+  if (typeof options.onSpeaker !== "function") return;
+  options.onSpeaker(String(id || ""));
+}
+
+async function routeOptions(library, options) {
+  if (typeof options.probeLocal !== "function") return {};
+  const probeTarget = localRouteProbe(library);
+  if (!probeTarget) return {};
+  let probed;
+  try {
+    probed = await options.probeLocal(probeTarget);
+  } catch {
+    probed = { ok: false, reason: "unreachable" };
+  }
+  const ok = probed === true || probed?.ok === true;
+  return {
+    localReachable: ok,
+    localReason: ok ? "" : probed?.reason || "unreachable",
+  };
 }

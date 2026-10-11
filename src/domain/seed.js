@@ -3,7 +3,7 @@
  * 夜晚图与白天同一文件夹，文件名里的「_白天」换成「_晚上」。
  */
 
-import { DEFAULT_STAGE_POSE, ensureCharacterPoses } from "./characters.js";
+import { DEFAULT_STAGE_POSE, ensureCharacterPoses, ensureThinkingFiles } from "./characters.js";
 import { defaultCloudSlots, ensureModelSlots } from "./models.js";
 import { ensureCurrentLocation } from "./scene.js";
 import { DEFAULT_SETTINGS, ensureSettings } from "./settings.js";
@@ -96,9 +96,11 @@ export function createSeedLibrary() {
     transferLog: [],
     model: {
       provider: "local",
+      routeMode: "auto",
       localBaseUrl: "http://127.0.0.1:11434/v1",
       localModel: "",
       localModels: [],
+      localKeepWarm: false,
       cloudBaseUrl: "",
       cloudApiKey: "",
       cloudModel: "",
@@ -117,7 +119,7 @@ export function createSeedLibrary() {
 
 export function migrateLibrary(raw) {
   if (raw && raw.revision >= 2 && Array.isArray(raw.worldBooks) && Array.isArray(raw.stages)) {
-    return ensureLibraryModel(ensureCurrentLocation(ensureCharacterPoses(ensureSettings(raw))));
+    return ensureLibraryModel(ensureCurrentLocation(ensureCharacterPoses(ensureThinkingFiles(ensureSettings(raw)))));
   }
   const seed = createSeedLibrary();
   if (raw?.guide) {
@@ -149,7 +151,10 @@ function ensureLibraryModel(library) {
   const slots = model.cloudSlots || [];
   const hasZhipu = slots.some((slot) => slot.id === "slot-zhipu" || slot.vendor === "zhipu");
   const hasQwen = slots.some((slot) => slot.id === "slot-qwen" || slot.vendor === "qwen");
+  const routeReady = model.routeMode === "auto" || model.routeMode === "local" || model.routeMode === "cloud";
   const ready =
+    routeReady &&
+    typeof model.localKeepWarm === "boolean" &&
     Array.isArray(model.localModels) &&
     hasZhipu &&
     hasQwen &&
@@ -176,6 +181,7 @@ function player() {
     speechStyle: "短句。",
     avatarFile: "",
     fullBodyFile: "",
+    thinkingFile: "",
     stagePose: { ...DEFAULT_STAGE_POSE },
   };
 }
@@ -191,6 +197,7 @@ function npc(id, stageId, name, folder, fileName, summary, personality, speechSt
     speechStyle,
     avatarFile: "",
     fullBodyFile: `assets/defaults/characters/女/${folder}/${fileName}`,
+    thinkingFile: "",
     stagePose: { ...DEFAULT_STAGE_POSE },
   };
 }

@@ -21,6 +21,7 @@ export function retargetLibraryPictures(library, root) {
   for (const person of next.characters || []) {
     if (person.avatarFile) person.avatarFile = rewrite(person.avatarFile);
     if (person.fullBodyFile) person.fullBodyFile = rewrite(person.fullBodyFile);
+    if (person.thinkingFile) person.thinkingFile = rewrite(person.thinkingFile);
   }
   for (const book of next.worldBooks || []) {
     for (const place of book.locations || []) {

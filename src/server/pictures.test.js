@@ -38,7 +38,12 @@ test("后缀或文件夹写错时对上磁盘上的那张图，已有的文件�
 
   const library = {
     characters: [
-      { id: "npc-astrid", avatarFile: "data/media/img-astrid.jpg", fullBodyFile: "data/media/img-sigrid.jpg" },
+      {
+        id: "npc-astrid",
+        avatarFile: "data/media/img-astrid.jpg",
+        fullBodyFile: "data/media/img-sigrid.jpg",
+        thinkingFile: "data/media/img-sigrid.jpg",
+      },
     ],
     worldBooks: [
       {
@@ -56,6 +61,7 @@ test("后缀或文件夹写错时对上磁盘上的那张图，已有的文件�
   assert.equal(retargeted.changed, true);
   assert.equal(retargeted.library.characters[0].avatarFile, "data/media/img-astrid.jpg");
   assert.equal(retargeted.library.characters[0].fullBodyFile, "data/media/img-sigrid.png");
+  assert.equal(retargeted.library.characters[0].thinkingFile, "data/media/img-sigrid.png");
   assert.equal(
     retargeted.library.worldBooks[0].locations[0].imageFile,
     "assets/defaults/backgrounds/北欧/村落/霜印村庄_白天.png",
@@ -65,6 +71,7 @@ test("后缀或文件夹写错时对上磁盘上的那张图，已有的文件�
     "assets/defaults/backgrounds/北欧/村庄/霜印村庄_晚上.jpg",
   );
   assert.equal(library.characters[0].fullBodyFile, "data/media/img-sigrid.jpg");
+  assert.equal(library.characters[0].thinkingFile, "data/media/img-sigrid.jpg");
 });
 
 test("同名文件有好几张时不瞎猜", () => {

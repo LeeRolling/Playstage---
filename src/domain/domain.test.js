@@ -3,7 +3,15 @@ import fs from "node:fs";
 import test from "node:test";
 import { adviseFromVram, describePrerequisites } from "./guide.js";
 import { createSeedLibrary, migrateLibrary } from "./library.js";
-import { LOCAL_CONNECTED_NOTE, actingTarget, armModelRetest } from "./models.js";
+import {
+  LOCAL_CONNECTED_NOTE,
+  LOCAL_KEEP_ALIVE_PIN,
+  actingTarget,
+  armModelRetest,
+  localChatKeepAlive,
+  localRouteProbe,
+  shouldReleaseLocalWarm,
+} from "./models.js";
 import { resolveScene } from "./scene.js";
 import { buildActingMessages, commitNpcReply, dispatch, finishCoolDown, planSpeakers, sessionForm, toPublicLibrary } from "./index.js";
 import { resolveUiSkin } from "./settings.js";
@@ -65,6 +73,8 @@ test("默认角色写下全身图路径", () => {
   assert.equal(astrid.fullBodyFile, "assets/defaults/characters/女/北欧/Astrid.png");
   assert.equal(nuanli.fullBodyFile, "assets/defaults/characters/女/东方/暖璃.png");
   assert.equal(chutang.fullBodyFile, "assets/defaults/characters/女/现代/初棠.png");
+  assert.equal(astrid.thinkingFile, "");
+  assert.equal(nuanli.thinkingFile, "");
 });
 
 test("说话里提到地点会换景，特殊情景没图时只做标记", () => {
@@ -398,7 +408,7 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
     stages: [{ id: "stage-frost" }],
     worldBooks: [{ id: "book-frost" }],
     settings: { spriteScale: "large", dialogScale: "short", uiSkin: "classic", uiSkinMode: "auto" },
-    characters: [{ id: "npc-astrid", stagePose: { x: 0, y: 0, scale: 1.15 } }],
+    characters: [{ id: "npc-astrid", stagePose: { x: 0, y: 0, scale: 1.15 }, thinkingFile: "" }],
   };
   assert.equal(migrateLibrary(stable), stable);
 
@@ -417,6 +427,62 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
   });
   assert.deepEqual(widened.characters[0].stagePose, { x: 100, y: -100, scale: 1.15 });
   assert.deepEqual(spec.limits.scale, { min: 0.4, max: 2.4, step: 0.05 });
+});
+
+test("思考立绘跟着人设保存，旧档缺了就是空", () => {
+  const seeded = createSeedLibrary();
+  for (const person of seeded.characters) assert.equal(person.thinkingFile, "");
+
+  const made = dispatch(seeded, { type: "character.create", kind: "npc" });
+  assert.equal(made.library.characters.at(-1).thinkingFile, "");
+  const player = dispatch(seeded, { type: "character.create", kind: "player" }).library.characters.at(-1);
+  assert.equal(player.thinkingFile, "");
+
+  const saved = dispatch(seeded, {
+    type: "character.update",
+    id: "npc-nuanli",
+    fields: { thinkingFile: " data/media/img-think.png " },
+  });
+  const nuanli = saved.library.characters.find((item) => item.id === "npc-nuanli");
+  assert.equal(nuanli.thinkingFile, "data/media/img-think.png");
+  assert.equal(nuanli.fullBodyFile, "assets/defaults/characters/女/东方/暖璃.png");
+  assert.equal(saved.library.characters.find((item) => item.id === "npc-yuetong").thinkingFile, "");
+
+  const kept = dispatch(saved.library, {
+    type: "character.update",
+    id: "npc-nuanli",
+    fields: { summary: "仍在" },
+  });
+  const keptNuanli = kept.library.characters.find((item) => item.id === "npc-nuanli");
+  assert.equal(keptNuanli.summary, "仍在");
+  assert.equal(keptNuanli.thinkingFile, "data/media/img-think.png");
+
+  const published = toPublicLibrary(kept.library);
+  assert.equal(published.characters.find((item) => item.id === "npc-nuanli").thinkingFile, "data/media/img-think.png");
+  const exported = dispatch(kept.library, { type: "transfer.export", kind: "characters" });
+  assert.equal(
+    exported.download.body.characters.find((item) => item.id === "npc-nuanli").thinkingFile,
+    "data/media/img-think.png",
+  );
+
+  const old = {
+    revision: 2,
+    stagePicked: true,
+    activeStageId: "stage-frost",
+    stages: [{ id: "stage-frost" }],
+    worldBooks: [{ id: "book-frost" }],
+    settings: { spriteScale: "large", dialogScale: "short", uiSkin: "classic", uiSkinMode: "auto" },
+    characters: [
+      { id: "npc-astrid", kind: "npc", name: "Astrid", fullBodyFile: "assets/defaults/characters/女/北欧/Astrid.png" },
+      { id: "npc-sigrid", thinkingFile: "  data/media/sigrid-think.png  " },
+      { id: "npc-elin", thinkingFile: 3 },
+    ],
+  };
+  const migrated = migrateLibrary(old);
+  assert.equal(migrated.characters[0].thinkingFile, "");
+  assert.equal(migrated.characters[0].fullBodyFile, "assets/defaults/characters/女/北欧/Astrid.png");
+  assert.equal(migrated.characters[1].thinkingFile, "data/media/sigrid-think.png");
+  assert.equal(migrated.characters[2].thinkingFile, "");
 });
 
 test("剧情包占位导出含前文提要，导入只登记", () => {
@@ -510,6 +576,137 @@ test("提示词带上世界书和刚说的话，钥匙不进界面", () => {
   assert.equal(JSON.stringify(missing).includes("apiKey"), false);
 });
 
+test("清掉本机模型后自动改用另一家，不再逼着去选本机", () => {
+  let library = dispatch(createSeedLibrary(), {
+    type: "model.update",
+    routeMode: "auto",
+    provider: "local",
+    localModel: "",
+    cloudBaseUrl: "https://api.deepseek.com/v1",
+    cloudModel: "deepseek-chat",
+    cloudApiKey: "dk-secret",
+  }).library;
+  const target = actingTarget(library);
+  assert.equal(target.ok, true);
+  assert.equal(target.provider, "cloud");
+  assert.equal(target.baseUrl, "https://api.deepseek.com/v1");
+  assert.equal(target.model, "deepseek-chat");
+  assert.equal(target.apiKey, "dk-secret");
+  assert.equal(target.label, "DeepSeek");
+  assert.match(target.notice, /改用云端「DeepSeek」/);
+  assert.equal(target.notice.includes("读取本机模型"), false);
+  assert.equal(target.notice.includes("还没有选择本机模型"), false);
+  const hinted = toPublicLibrary(library).model;
+  assert.equal(hinted.routeMode, "auto");
+  assert.match(hinted.routeHint, /DeepSeek/);
+  assert.equal(JSON.stringify(hinted).includes("dk-secret"), false);
+
+  const kept = dispatch(library, { type: "model.update", localModel: "qwen-local" }).library;
+  assert.equal(actingTarget(kept).provider, "local");
+  const down = actingTarget(kept, { localReachable: false, localReason: "unreachable" });
+  assert.equal(down.label, "DeepSeek");
+  assert.match(down.notice, /连不上/);
+  const uninstalled = actingTarget(kept, { localReachable: false, localReason: "missing" });
+  assert.match(uninstalled.notice, /没有这个模型/);
+
+  const forced = dispatch(library, { type: "model.update", routeMode: "local", localModel: "" }).library;
+  const blocked = actingTarget(forced);
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.message, /读取本机模型/);
+
+  const cloudOnly = dispatch(kept, { type: "model.update", routeMode: "cloud" }).library;
+  const forcedCloud = actingTarget(cloudOnly, { localReachable: true });
+  assert.equal(forcedCloud.provider, "cloud");
+  assert.equal(forcedCloud.model, "deepseek-chat");
+  assert.equal(forcedCloud.notice, undefined);
+
+  const none = actingTarget(createSeedLibrary());
+  assert.equal(none.ok, false);
+  assert.match(none.message, /本机模型/);
+  assert.equal(none.message.includes("读取本机模型"), false);
+  assert.throws(() => dispatch(createSeedLibrary(), { type: "model.update", routeMode: "both" }), /自动/);
+  const saved = dispatch(createSeedLibrary(), { type: "model.update", routeMode: "auto", provider: "local" });
+  assert.match(saved.message, /自动接话/);
+  assert.equal(localRouteProbe(createSeedLibrary()), null);
+  assert.equal(localRouteProbe(kept).model, "qwen-local");
+  assert.equal(localRouteProbe(cloudOnly), null);
+});
+
+test("自动时勾了智谱就用智谱，没勾就用另一家留下的接口", () => {
+  let library = dispatch(createSeedLibrary(), {
+    type: "model.update",
+    routeMode: "auto",
+    provider: "zhipu",
+    localModel: "",
+    zhipuModel: "glm-4-flash",
+    zhipuApiKey: "zk",
+    cloudBaseUrl: "https://api.deepseek.com",
+    cloudModel: "deepseek-chat",
+    cloudApiKey: "dk",
+  }).library;
+  const zhipu = actingTarget(library);
+  assert.equal(zhipu.label, "智谱");
+  assert.equal(zhipu.model, "glm-4-flash");
+  assert.equal(zhipu.notice, undefined);
+
+  library = dispatch(library, { type: "model.update", provider: "local" }).library;
+  const extra = actingTarget(library);
+  assert.equal(extra.label, "DeepSeek");
+  assert.match(extra.notice, /还没有选模型/);
+
+  const slotted = createSeedLibrary();
+  slotted.model.localModel = "";
+  slotted.model.cloudSlots.push({
+    id: "slot-deepseek",
+    label: "DeepSeek",
+    vendor: "custom",
+    baseUrl: "https://api.deepseek.com/v1",
+    model: "DeepSeek-Flash",
+    apiKey: "slot-dk",
+    characterIds: [],
+  });
+  const fromSlot = actingTarget(slotted);
+  assert.equal(fromSlot.ok, true);
+  assert.equal(fromSlot.model, "DeepSeek-Flash");
+  assert.equal(fromSlot.baseUrl, "https://api.deepseek.com/v1");
+  assert.equal(fromSlot.apiKey, "slot-dk");
+});
+
+test("预热只留给本机，云端回退和空闲后会放开", () => {
+  const seeded = createSeedLibrary();
+  assert.equal(seeded.model.localKeepWarm, false);
+  let library = dispatch(seeded, { type: "model.update", localKeepWarm: true, localModel: "qwen-local" }).library;
+  assert.equal(library.model.localKeepWarm, true);
+  library = dispatch(library, { type: "model.update", localModel: "qwen-local" }).library;
+  assert.equal(library.model.localKeepWarm, true);
+  const published = toPublicLibrary(library).model;
+  assert.equal(published.localKeepWarm, true);
+  assert.equal(published.localWarmIdleMinutes, 10);
+  const localTarget = { provider: "local", model: "qwen-local", apiKey: "", baseUrl: "http://127.0.0.1:11434/v1" };
+  assert.equal(localChatKeepAlive(library.model, localTarget), LOCAL_KEEP_ALIVE_PIN);
+  assert.equal(
+    localChatKeepAlive(library.model, {
+      provider: "cloud",
+      model: "deepseek-chat",
+      apiKey: "dk",
+      baseUrl: "https://api.deepseek.com/v1",
+    }),
+    null,
+  );
+  const cloudOnly = dispatch(library, { type: "model.update", routeMode: "cloud" }).library;
+  assert.equal(localChatKeepAlive(cloudOnly.model, localTarget), null);
+  const off = dispatch(library, { type: "model.update", localKeepWarm: false }).library;
+  assert.equal(localChatKeepAlive(off.model, localTarget), null);
+  assert.equal(shouldReleaseLocalWarm({ pinned: true, lastLocalUseAt: 1000, now: 1500, idleMs: 1000 }), false);
+  assert.equal(shouldReleaseLocalWarm({ pinned: true, lastLocalUseAt: 1000, now: 2000, idleMs: 1000 }), true);
+  assert.equal(shouldReleaseLocalWarm({ pinned: false, lastLocalUseAt: 1000, now: 9000, idleMs: 1000 }), false);
+
+  const old = createSeedLibrary();
+  delete old.model.localKeepWarm;
+  const migrated = migrateLibrary(old);
+  assert.equal(migrated.model.localKeepWarm, false);
+});
+
 test("保存本机和云端时，提示分开写，并且用对「仍」", () => {
   const local = dispatch(createSeedLibrary(), { type: "model.update", provider: "local", localModel: "qwen" });
   assert.equal(local.message, "本地模型已经加载到《剧戏台》中，《剧戏台》仍不会自带任何AI模型。");
@@ -595,6 +792,20 @@ test("旧资料库会补上智谱栏，已经写下的千问钥匙还在", () =>
   assert.equal(next.model.cloudSlots.find((item) => item.id === "slot-deepseek").apiKey, "dk");
   assert.equal(next.model.cloudSlots.find((item) => item.id === "slot-zhipu").baseUrl, "https://open.bigmodel.cn/api/paas/v4");
   assert.equal(old.model.cloudSlots.some((item) => item.id === "slot-zhipu"), false);
+});
+
+test("没写下接话方式时，选过云端的仍只用云端，本机则改成自动", () => {
+  const cloudish = createSeedLibrary();
+  delete cloudish.model.routeMode;
+  cloudish.model.provider = "zhipu";
+  const cloudNext = migrateLibrary(cloudish);
+  assert.notEqual(cloudNext, cloudish);
+  assert.equal(cloudNext.model.routeMode, "cloud");
+
+  const localish = createSeedLibrary();
+  delete localish.model.routeMode;
+  const localNext = migrateLibrary(localish);
+  assert.equal(localNext.model.routeMode, "auto");
 });
 
 test("立绘大小默认是大，对话框默认是矮，并且会留下来", () => {
