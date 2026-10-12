@@ -5,8 +5,11 @@
  */
 
 import {
+  ACTION_SLOT_COUNT,
   createCharacter,
+  characterFolderLayout,
   DEFAULT_STAGE_POSE,
+  EXPRESSION_SLOT_COUNT,
   removeCharacter,
   STAGE_POSE_LIMITS,
   updateCharacter,
@@ -119,7 +122,14 @@ export function toPublicLibrary(library) {
         scale: { ...STAGE_POSE_LIMITS.scale },
       },
     },
+    visualSlots: {
+      expressions: EXPRESSION_SLOT_COUNT,
+      actions: ACTION_SLOT_COUNT,
+    },
   };
+  for (const person of next.characters || []) {
+    person.mediaFolders = characterFolderLayout(person);
+  }
   return next;
 }
 

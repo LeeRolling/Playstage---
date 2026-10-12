@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { resolveStoredPicture, retargetLibraryPictures } from "./pictures.js";
+import { adoptCharacterFolderSlots, resolveStoredPicture, retargetLibraryPictures, settleCharacterPortraits } from "./pictures.js";
 
 test("后缀或文件夹写错时对上磁盘上的那张图，已有的文件不改、不删", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "playstage-pic-"));
@@ -82,4 +82,45 @@ test("同名文件有好几张时不瞎猜", () => {
     fs.writeFileSync(path.join(dir, "重复_白天.png"), folder);
   }
   assert.equal(resolveStoredPicture(root, "assets/defaults/backgrounds/丙/重复_白天.jpg"), "");
+});
+
+test("单张暖璃.png 抄进立绘文件夹，空格会读到表情和动作里的编号图", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "playstage-slots-"));
+  const dir = path.join(root, "assets", "defaults", "characters", "女", "东方");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "暖璃.png"), "portrait");
+  fs.mkdirSync(path.join(dir, "暖璃", "表情"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "暖璃", "表情", "01.png"), "face");
+  fs.mkdirSync(path.join(dir, "暖璃", "动作"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "暖璃", "动作", "03.jpg"), "act");
+
+  const library = {
+    characters: [
+      {
+        id: "npc-nuanli",
+        name: "暖璃",
+        fullBodyFile: "assets/defaults/characters/女/东方/暖璃/立绘/暖璃.png",
+        expressionFiles: Array.from({ length: 10 }, () => ""),
+        actionFiles: Array.from({ length: 11 }, () => ""),
+      },
+    ],
+  };
+  settleCharacterPortraits(library, root);
+  assert.equal(fs.readFileSync(path.join(dir, "暖璃", "立绘", "暖璃.png"), "utf8"), "portrait");
+  assert.equal(fs.readFileSync(path.join(dir, "暖璃.png"), "utf8"), "portrait");
+
+  const adopted = adoptCharacterFolderSlots(library, root);
+  assert.equal(adopted.changed, true);
+  assert.equal(adopted.library.characters[0].expressionFiles.length, 10);
+  assert.equal(adopted.library.characters[0].actionFiles.length, 11);
+  assert.equal(adopted.library.characters[0].expressionFiles[0], "assets/defaults/characters/女/东方/暖璃/表情/01.png");
+  assert.equal(adopted.library.characters[0].expressionFiles[1], "");
+  assert.equal(adopted.library.characters[0].actionFiles[2], "assets/defaults/characters/女/东方/暖璃/动作/03.jpg");
+  assert.equal(library.characters[0].expressionFiles[0], "");
+
+  const filled = adopted.library.characters[0];
+  filled.expressionFiles[0] = "data/media/暖璃/表情/自定义.png";
+  const kept = adoptCharacterFolderSlots(adopted.library, root);
+  assert.equal(kept.changed, false);
+  assert.equal(kept.library.characters[0].expressionFiles[0], "data/media/暖璃/表情/自定义.png");
 });

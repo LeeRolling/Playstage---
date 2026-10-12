@@ -751,6 +751,22 @@ a { color: var(--gold); }
   height: 72px;
 }
 
+.visual-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.visual-slot {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-top: var(--frame) solid var(--line);
+}
+
+.visual-slot .help { margin-bottom: 6px; }
+
 .model-status {
   margin: 8px 0 0;
   color: var(--gold);

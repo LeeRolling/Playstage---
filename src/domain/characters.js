@@ -21,6 +21,13 @@ export const STAGE_POSE_LIMITS = {
   scale: { min: 0.4, max: 2.4, step: 0.05 },
 };
 
+/** 表情十格、动作十一格。空字符串表示这一格还没有图。 */
+export const EXPRESSION_SLOT_COUNT = 10;
+export const ACTION_SLOT_COUNT = 11;
+
+const PORTRAIT_EXT = /\.(png|jpe?g|webp|gif)$/i;
+const SLOT_DIRS = new Set(["立绘", "表情", "动作"]);
+
 export function freshStagePose() {
   return { x: DEFAULT_STAGE_POSE.x, y: DEFAULT_STAGE_POSE.y, scale: DEFAULT_STAGE_POSE.scale };
 }
@@ -78,6 +85,7 @@ export function createCharacter(library, kind) {
     fullBodyFile: "",
     thinkingFile: "",
     stagePose: freshStagePose(),
+    ...freshCharacterVisuals(),
   };
   next.characters.push(character);
   return { library: next, character };
@@ -88,8 +96,21 @@ export function updateCharacter(library, id, fields) {
   const character = next.characters.find((item) => item.id === id);
   if (!character) throw new Error("找不到这张人设卡。");
   if (fields.name != null) character.name = requireText(fields.name, "人设要有名字。");
-  for (const key of ["summary", "personality", "speechStyle", "avatarFile", "fullBodyFile", "thinkingFile"]) {
+  for (const key of ["summary", "personality", "speechStyle", "avatarFile", "thinkingFile"]) {
     if (fields[key] != null) character[key] = String(fields[key]).trim();
+  }
+  if (fields.fullBodyFile != null) {
+    character.fullBodyFile = migratePortraitFile(fields.fullBodyFile, character.name);
+  }
+  if (fields.expressionFiles != null) character.expressionFiles = normalizeExpressionFiles(fields.expressionFiles);
+  if (fields.actionFiles != null) character.actionFiles = normalizeActionFiles(fields.actionFiles);
+  if (fields.activeExpression != null) {
+    character.activeExpression = normalizeSlotIndex(fields.activeExpression, EXPRESSION_SLOT_COUNT);
+    if (character.activeExpression >= 0) character.activeAction = -1;
+  }
+  if (fields.activeAction != null) {
+    character.activeAction = normalizeSlotIndex(fields.activeAction, ACTION_SLOT_COUNT);
+    if (character.activeAction >= 0) character.activeExpression = -1;
   }
   if (fields.stagePose != null) {
     character.stagePose = normalizeStagePose({
@@ -132,6 +153,153 @@ function clampPoseNumber(value, limit, fallback) {
 function normalizeThinkingFile(value) {
   if (typeof value !== "string") return "";
   return value.trim();
+}
+
+/**
+ * 每位角色一个同名文件夹，里面是立绘、表情、动作。
+ * 单张图（例如 暖璃.png）迁到 暖璃/立绘/暖璃.png。
+ * 已经在立绘、表情、动作里的路径不动。自动裁出来的 img- 文件也不改名。
+ */
+export function migratePortraitFile(stored, characterName = "") {
+  const rel = typeof stored === "string" ? stored.replace(/\\/g, "/").trim() : "";
+  if (!rel || rel.includes("..") || !PORTRAIT_EXT.test(rel)) return rel;
+  const parts = rel.split("/");
+  const file = parts[parts.length - 1];
+  const parent = parts.length >= 2 ? parts[parts.length - 2] : "";
+  if (SLOT_DIRS.has(parent)) return rel;
+  const stem = file.replace(/\.[^.]+$/, "");
+  if (!stem || stem.startsWith("img-")) return rel;
+  const name = String(characterName || "").trim().normalize("NFC");
+  const named = Boolean(name) && stem.normalize("NFC") === name;
+  if (!named && !rel.includes("/characters/")) return rel;
+  const dir = parts.slice(0, -1).join("/");
+  return `${dir}/${stem}/立绘/${file}`;
+}
+
+export function safeFolderName(name) {
+  const text = String(name || "")
+    .trim()
+    .normalize("NFC")
+    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/\s+/g, "")
+    .replace(/^\.+/, "");
+  return text || "未命名角色";
+}
+
+export function slotFileName(index) {
+  return String(Number(index) + 1).padStart(2, "0");
+}
+
+export function emptyExpressionFiles() {
+  return Array.from({ length: EXPRESSION_SLOT_COUNT }, () => "");
+}
+
+export function emptyActionFiles() {
+  return Array.from({ length: ACTION_SLOT_COUNT }, () => "");
+}
+
+export function freshCharacterVisuals() {
+  return {
+    expressionFiles: emptyExpressionFiles(),
+    actionFiles: emptyActionFiles(),
+    activeExpression: -1,
+    activeAction: -1,
+  };
+}
+
+/**
+ * 角色图放在哪。立绘路径已经是文件夹时，以那个文件夹为准。
+ * 还没有立绘文件夹时，用 data/media/角色名。
+ */
+export function characterFolderLayout(character) {
+  const name = String(character?.name || "").trim();
+  const portrait = migratePortraitFile(character?.fullBodyFile, name);
+  const marker = "/立绘/";
+  const at = portrait.indexOf(marker);
+  const root = at > 0 ? portrait.slice(0, at) : name ? `data/media/${safeFolderName(name)}` : "";
+  return {
+    root,
+    portraitDir: root ? `${root}/立绘` : "",
+    expressionDir: root ? `${root}/表情` : "",
+    actionDir: root ? `${root}/动作` : "",
+    portraitFile: at > 0 ? portrait : fileOf(character?.fullBodyFile),
+  };
+}
+
+export function ensureCharacterVisuals(library) {
+  if (!Array.isArray(library?.characters) || library.characters.length === 0) return library;
+  let changed = false;
+  const characters = library.characters.map((character) => {
+    if (!character || typeof character !== "object") return character;
+    const next = applyCharacterVisuals(character);
+    if (characterVisualsEqual(character, next)) return character;
+    changed = true;
+    return next;
+  });
+  if (!changed) return library;
+  return { ...library, characters };
+}
+
+export function normalizeExpressionFiles(raw) {
+  return normalizeFileList(raw, EXPRESSION_SLOT_COUNT);
+}
+
+export function normalizeActionFiles(raw) {
+  return normalizeFileList(raw, ACTION_SLOT_COUNT);
+}
+
+export function normalizeSlotIndex(value, count) {
+  if (value == null || value === "") return -1;
+  const number = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(number) || number < 0 || number >= count) return -1;
+  return number;
+}
+
+function applyCharacterVisuals(character) {
+  const fullBodyFile = migratePortraitFile(character.fullBodyFile, character.name);
+  const expressionFiles = normalizeExpressionFiles(character.expressionFiles);
+  const actionFiles = normalizeActionFiles(character.actionFiles);
+  let activeExpression = normalizeSlotIndex(character.activeExpression, EXPRESSION_SLOT_COUNT);
+  let activeAction = normalizeSlotIndex(character.activeAction, ACTION_SLOT_COUNT);
+  if (activeExpression >= 0 && activeAction >= 0) activeExpression = -1;
+  return { ...character, fullBodyFile, expressionFiles, actionFiles, activeExpression, activeAction };
+}
+
+function characterVisualsEqual(character, next) {
+  if (fileOf(character.fullBodyFile) !== next.fullBodyFile) return false;
+  if (Object.prototype.hasOwnProperty.call(character, "fullBodyFile") && character.fullBodyFile !== next.fullBodyFile) {
+    return false;
+  }
+  if (!sameFileList(character.expressionFiles, next.expressionFiles)) return false;
+  if (!sameFileList(character.actionFiles, next.actionFiles)) return false;
+  if (!Object.prototype.hasOwnProperty.call(character, "activeExpression") || character.activeExpression !== next.activeExpression) {
+    return false;
+  }
+  if (!Object.prototype.hasOwnProperty.call(character, "activeAction") || character.activeAction !== next.activeAction) {
+    return false;
+  }
+  return true;
+}
+
+function normalizeFileList(raw, count) {
+  const source = Array.isArray(raw) ? raw : [];
+  const files = [];
+  for (let index = 0; index < count; index += 1) {
+    files.push(fileOf(source[index]));
+  }
+  return files;
+}
+
+function sameFileList(raw, next) {
+  if (!Array.isArray(raw) || raw.length !== next.length) return false;
+  for (let index = 0; index < next.length; index += 1) {
+    if (raw[index] !== next[index]) return false;
+  }
+  return true;
+}
+
+function fileOf(value) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function storedPoseEquals(raw, pose) {

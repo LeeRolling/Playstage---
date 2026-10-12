@@ -25,8 +25,8 @@ let library = null;
 let hardware = null;
 let prerequisites = null;
 let dataFile = "";
-let view = location.hash.replace("#", "") || "stage";
-if (!views.some(([id]) => id === view)) view = "stage";
+let motionPersonId = "";
+let view = readHashView();
 let notice = null;
 let guideOpen = false;
 let guideStep = 0;
@@ -101,7 +101,7 @@ function render() {
         ${views
           .map(
             ([id, short, full]) =>
-              `<button type="button" data-view="${id}" aria-current="${view === id ? "page" : "false"}" title="${full}">${short}<small>${full}</small></button>`,
+              `<button type="button" data-view="${id}" aria-current="${(view === "motions" ? "cards" : view) === id ? "page" : "false"}" title="${full}">${short}<small>${full}</small></button>`,
           )
           .join("")}
       </nav>
@@ -217,21 +217,42 @@ function ribbonHtml(scene, missingFile) {
 }
 
 function spriteHtml(person, speaker) {
-  const thinkingSrc = thinkingSpeakerId === person.id ? pictureUrl(person, "thinking") : "";
-  const src = thinkingSrc || pictureUrl(person, "fullBody");
+  const art = stageArt(person);
   const someoneSpeaking = Boolean(speaker?.id) && speaker.id !== "system";
   const quiet = someoneSpeaking && person.id !== speaker.id;
-  const image = src
-    ? `<img alt="${esc(person.name)}的立绘" src="${esc(src)}" data-art="${thinkingSrc ? "thinking" : "full"}" />`
+  const image = art.src
+    ? `<img alt="${esc(person.name)}的立绘" src="${esc(art.src)}" data-art="${esc(art.kind)}" />`
     : "";
   const pose = poseOf(person);
-  return `<div class="sprite ${quiet ? "is-quiet" : "is-speaking"}" data-person="${esc(person.id)}" style="--pose-x:${pose.x};--pose-y:${pose.y};--pose-scale:${pose.scale}"><div class="figure" style="--accent:${accent(person.id)}">${image}</div></div>`;
+  return `<div class="sprite ${quiet ? "is-quiet" : "is-speaking"}" data-person="${esc(person.id)}" data-stage-art="${esc(art.kind)}" style="--pose-x:${pose.x};--pose-y:${pose.y};--pose-scale:${pose.scale}"><div class="figure" style="--accent:${accent(person.id)}">${image}</div></div>`;
+}
+
+function stageArt(person) {
+  const thinkingSrc = thinkingSpeakerId === person.id ? pictureUrl(person, "thinking") : "";
+  if (thinkingSrc) return { src: thinkingSrc, kind: "thinking" };
+  const actionSrc = activeSlotUrl(person, "action");
+  if (actionSrc) return { src: actionSrc, kind: "action" };
+  const expressionSrc = activeSlotUrl(person, "expression");
+  if (expressionSrc) return { src: expressionSrc, kind: "expression" };
+  return { src: pictureUrl(person, "fullBody"), kind: "full" };
+}
+
+function activeSlotUrl(person, kind) {
+  const action = kind === "action";
+  const index = action ? person.activeAction : person.activeExpression;
+  const files = action ? person.actionFiles : person.expressionFiles;
+  const count = action ? actionSlotCount() : expressionSlotCount();
+  if (!Number.isInteger(index) || index < 0 || index >= count) return "";
+  const preview = previews.get(`${person.id}:${kind}:${index}`);
+  if (preview) return preview;
+  return mediaUrl(files?.[index]);
 }
 
 function ledgerHtml() {
   const pages = {
     world: worldHtml,
     cards: cardsHtml,
+    motions: motionsHtml,
     session: sessionHtml,
     saves: savesHtml,
     transfer: transferHtml,
@@ -377,7 +398,7 @@ function cardsHtml() {
   const players = library.characters.filter((item) => item.kind === "player");
   return `
     <h2>人设卡</h2>
-    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像、全身图和思考立绘都可以裁一下再留下。新裁的图会存成 PNG，下面的路径会换成新文件，透明底会留下来。原来的图还在文件夹里，不会被删掉。左右、上下和放大记在这张卡上，每一场都用这一套。</p>
+    <p class="help">每位角色有自己的文件夹，里面分成立绘、表情和动作。图片放进那个文件夹后，舞台上才会看见。头像、全身图和思考立绘都可以裁一下再留下。新裁的图会存成 PNG，下面的路径会换成新文件，透明底会留下来。原来的图还在文件夹里，不会被删掉。表情和动作在「动作与表情」里选。左右、上下和放大记在这张卡上，每一场都用这一套。</p>
     <div class="row">
       <button class="primary" type="button" data-new="player">新的玩家人设</button>
       <button class="ghost" type="button" data-new="npc">新的角色（记在当前舞台）</button>
@@ -424,6 +445,7 @@ function cardHtml(person) {
       ${poseFieldsHtml(person)}
       <div class="row">
         <button class="primary" type="submit">保存人设</button>
+        <button class="ghost" type="button" data-motions="${esc(person.id)}">动作与表情</button>
         <button class="danger" type="button" data-remove="${esc(person.id)}">删除</button>
       </div>
     </form>
@@ -439,6 +461,67 @@ function thinkingFieldsHtml(person) {
       <label>思考</label>
       <input type="file" accept="image/*" data-crop="thinking" data-person="${esc(person.id)}" />
       <p class="help">${help}</p>`;
+}
+
+function motionsHtml() {
+  const person = library.characters.find((item) => item.id === motionPersonId);
+  if (!person) {
+    return `
+      <h2>动作与表情</h2>
+      <p class="help">找不到这张人设卡。</p>
+      <div class="row"><button class="ghost" type="button" data-go="cards">回到人设</button></div>`;
+  }
+  const folders = person.mediaFolders || {};
+  const using = visualLabel(person);
+  return `
+    <h2>动作与表情</h2>
+    <p class="help">${esc(person.name)} 的表情和动作。表情十张，动作十一张。选中的那一张会在演戏时出现在舞台上。没选时仍用全身图。等模型接话时，如果设了思考立绘，会先换成那一张。</p>
+    <p class="help">按台词自动换表情和动作，留到以后的世界书。这一版先自己选。</p>
+    <p class="help">文件夹：${esc(folders.root || "还没有文件夹")}。立绘在「立绘」，表情在「表情」，动作在「动作」。编号从 01 起。图放进文件夹后，重新打开就能看见；在这里裁一张，会直接写进对应的那一格。</p>
+    <p class="help">${using ? `舞台上现在用的是${esc(using)}。` : "舞台上现在用全身图。"}</p>
+    <div class="row"><button class="ghost" type="button" data-go="cards">回到人设</button><button class="ghost" type="button" data-use-full="${esc(person.id)}">改回全身图</button></div>
+    ${visualSectionHtml(person, "expression", "表情", expressionSlotCount(), folders.expressionDir)}
+    ${visualSectionHtml(person, "action", "动作", actionSlotCount(), folders.actionDir)}
+  `;
+}
+
+function visualSectionHtml(person, kind, label, count, dir) {
+  const files = slotFiles(person, kind, count);
+  const active = kind === "action" ? person.activeAction : person.activeExpression;
+  const slots = files
+    .map((file, index) => {
+      const src = slotPreview(person, kind, index, file);
+      const current = active === index && file;
+      return `
+        <div class="visual-slot" data-${kind}-slot="${index}">
+          ${src ? `<img class="thumb" alt="" src="${esc(src)}" />` : `<div class="thumb" aria-hidden="true"></div>`}
+          <div>
+            <b>${label} ${index + 1}</b>
+            ${current ? `<span class="tag">正在用</span>` : ""}
+            <p class="help">${file ? `已记下 ${esc(file)}` : "这一格还没有图。"}</p>
+            <label>放一张${label}</label>
+            <input type="file" accept="image/*" data-crop="${kind}" data-person="${esc(person.id)}" data-slot="${index}" />
+            <div class="row"><button class="primary" type="button" data-use-${kind}="${index}" ${file ? "" : "disabled"}>上台用这张</button></div>
+          </div>
+        </div>`;
+    })
+    .join("");
+  return `
+    <section class="block" data-visual="${kind}" data-slot-count="${count}">
+      <h3>${label}</h3>
+      <p class="help">${dir ? `放在 ${esc(dir)}。` : "还没有文件夹。"}一共 ${count} 张。</p>
+      <div class="visual-slots">${slots}</div>
+    </section>`;
+}
+
+function visualLabel(person) {
+  if (Number.isInteger(person.activeAction) && person.activeAction >= 0 && person.actionFiles?.[person.activeAction]) {
+    return `动作 ${person.activeAction + 1}`;
+  }
+  if (Number.isInteger(person.activeExpression) && person.activeExpression >= 0 && person.expressionFiles?.[person.activeExpression]) {
+    return `表情 ${person.activeExpression + 1}`;
+  }
+  return "";
 }
 
 function sessionHtml() {
@@ -1186,15 +1269,31 @@ function bind() {
       input.value = "";
       if (!file) return;
       const kind = input.dataset.crop;
-      const portrait = kind === "avatar" || kind === "full" || kind === "thinking";
+      const portrait = kind === "avatar" || kind === "full" || kind === "thinking" || kind === "expression" || kind === "action";
       const aspect = kind === "avatar" ? 1 : portrait ? 2 / 3 : 16 / 9;
-      const title = kind === "avatar" ? "裁头像" : kind === "thinking" ? "裁思考立绘" : kind === "full" ? "裁全身图" : "裁地点图";
+      const title =
+        kind === "avatar"
+          ? "裁头像"
+          : kind === "thinking"
+            ? "裁思考立绘"
+            : kind === "expression"
+              ? "裁表情"
+              : kind === "action"
+                ? "裁动作"
+                : kind === "full"
+                  ? "裁全身图"
+                  : "裁地点图";
       openCropper({
         file,
         aspect,
         title,
         mime: preferredImageMime(file.type, kind),
+        place: visualPlace(input),
         onDone: async (savedPath) => {
+          if (kind === "expression" || kind === "action") {
+            await saveVisualSlot(input.dataset.person, kind, Number(input.dataset.slot), savedPath);
+            return;
+          }
           if (portrait) {
             const slot = kind === "avatar" ? "avatar" : kind === "thinking" ? "thinking" : "fullBody";
             const fields =
@@ -1254,6 +1353,36 @@ function bind() {
             scale: data.get("poseScale"),
           },
         },
+      });
+    });
+  });
+  app.querySelectorAll("[data-motions]").forEach((button) => {
+    button.addEventListener("click", () => {
+      motionPersonId = button.dataset.motions;
+      view = "motions";
+      location.hash = `motions:${motionPersonId}`;
+      notice = null;
+      render();
+    });
+  });
+  app.querySelectorAll("[data-use-expression]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      act({ type: "character.update", id: motionPersonId, fields: { activeExpression: Number(button.dataset.useExpression) } });
+    });
+  });
+  app.querySelectorAll("[data-use-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      act({ type: "character.update", id: motionPersonId, fields: { activeAction: Number(button.dataset.useAction) } });
+    });
+  });
+  app.querySelectorAll("[data-use-full]").forEach((button) => {
+    button.addEventListener("click", () => {
+      act({
+        type: "character.update",
+        id: button.dataset.useFull,
+        fields: { activeExpression: -1, activeAction: -1 },
       });
     });
   });
@@ -1482,7 +1611,7 @@ function waitingNotice(local, late) {
   return "云端还没说完。快模型一般不用等这么久，可以再等一会儿。";
 }
 
-function openCropper({ file, aspect, title, mime, onDone }) {
+function openCropper({ file, aspect, title, mime, onDone, place }) {
   const overlay = document.createElement("div");
   overlay.className = "modal-back";
   overlay.innerHTML = `
@@ -1580,7 +1709,7 @@ function openCropper({ file, aspect, title, mime, onDone }) {
       return;
     }
     try {
-      const savedPath = await uploadMedia(blob);
+      const savedPath = await uploadMedia(blob, place);
       await onDone(savedPath);
     } catch (error) {
       notice = { tone: "bad", text: error instanceof Error ? error.message : "图片没保存下来。" };
@@ -1594,12 +1723,17 @@ function openCropper({ file, aspect, title, mime, onDone }) {
   }
 }
 
-async function uploadMedia(blob) {
+async function uploadMedia(blob, place) {
   const dataUrl = await blobToDataUrl(blob);
+  const body = { dataUrl };
+  if (place?.folder && place?.fileName) {
+    body.folder = place.folder;
+    body.fileName = place.fileName;
+  }
   const response = await fetch("/api/media", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ dataUrl }),
+    body: JSON.stringify(body),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.message || "图片没保存下来。");
@@ -1672,6 +1806,60 @@ function currentSpeaker(session) {
   const person = last ? library.characters.find((item) => item.id === last.speakerId) : null;
   if (!person) return { id: "system", name: last?.speakerName || "戏台", src: "" };
   return { id: person.id, name: person.name, src: pictureUrl(person, "avatar") };
+}
+
+function readHashView() {
+  const hash = location.hash.replace(/^#/, "");
+  const marker = "motions:";
+  if (hash.startsWith(marker)) {
+    motionPersonId = decodeURIComponent(hash.slice(marker.length));
+    return "motions";
+  }
+  if (views.some(([id]) => id === hash)) return hash || "stage";
+  return "stage";
+}
+
+function expressionSlotCount() {
+  const count = library?.view?.visualSlots?.expressions;
+  return Number.isInteger(count) && count > 0 ? count : 10;
+}
+
+function actionSlotCount() {
+  const count = library?.view?.visualSlots?.actions;
+  return Number.isInteger(count) && count > 0 ? count : 11;
+}
+
+function slotFiles(person, kind, count) {
+  const raw = kind === "action" ? person.actionFiles : person.expressionFiles;
+  const files = [];
+  for (let index = 0; index < count; index += 1) files.push(String(raw?.[index] || ""));
+  return files;
+}
+
+function slotPreview(person, kind, index, file) {
+  return previews.get(`${person.id}:${kind}:${index}`) || mediaUrl(file);
+}
+
+function visualPlace(input) {
+  const kind = input.dataset.crop;
+  if (kind !== "expression" && kind !== "action") return null;
+  const person = library.characters.find((item) => item.id === input.dataset.person);
+  const dir = kind === "expression" ? person?.mediaFolders?.expressionDir : person?.mediaFolders?.actionDir;
+  const index = Number(input.dataset.slot);
+  if (!dir || !Number.isInteger(index) || index < 0) return null;
+  return { folder: dir, fileName: String(index + 1).padStart(2, "0") };
+}
+
+async function saveVisualSlot(personId, kind, index, savedPath) {
+  const person = library.characters.find((item) => item.id === personId);
+  if (!person) return;
+  const count = kind === "action" ? actionSlotCount() : expressionSlotCount();
+  if (!Number.isInteger(index) || index < 0 || index >= count) return;
+  const files = slotFiles(person, kind, count);
+  files[index] = savedPath;
+  previews.set(`${personId}:${kind}:${index}`, mediaUrl(savedPath));
+  const key = kind === "action" ? "actionFiles" : "expressionFiles";
+  await act({ type: "character.update", id: personId, fields: { [key]: files } });
 }
 
 function pictureUrl(person, slot) {

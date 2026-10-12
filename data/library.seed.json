@@ -402,7 +402,34 @@
         "x": 0,
         "y": 0,
         "scale": 1.15
-      }
+      },
+      "expressionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "actionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "activeExpression": -1,
+      "activeAction": -1
     },
     {
       "id": "npc-astrid",
@@ -413,13 +440,40 @@
       "personality": "直，不绕。站在门与人之间时先看谁没带武器。",
       "speechStyle": "短句。先说能不能，再说为什么。",
       "avatarFile": "",
-      "fullBodyFile": "assets/defaults/characters/女/北欧/Astrid.png",
+      "fullBodyFile": "assets/defaults/characters/女/北欧/Astrid/立绘/Astrid.png",
       "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
         "scale": 1.15
-      }
+      },
+      "expressionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "actionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "activeExpression": -1,
+      "activeAction": -1
     },
     {
       "id": "npc-sigrid",
@@ -430,13 +484,40 @@
       "personality": "慢热，记性长。不愿把去年的霜税说成「过去的事」。",
       "speechStyle": "像在低声唱歌，一句里常带旧年。",
       "avatarFile": "",
-      "fullBodyFile": "assets/defaults/characters/女/北欧/Sigrid.png",
+      "fullBodyFile": "assets/defaults/characters/女/北欧/Sigrid/立绘/Sigrid.png",
       "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
         "scale": 1.15
-      }
+      },
+      "expressionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "actionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "activeExpression": -1,
+      "activeAction": -1
     },
     {
       "id": "npc-elin",
@@ -447,13 +528,40 @@
       "personality": "谨慎，爱核对。不接受「大约」。",
       "speechStyle": "先报数字和人名，再给判断。",
       "avatarFile": "",
-      "fullBodyFile": "assets/defaults/characters/女/北欧/Elin.png",
+      "fullBodyFile": "assets/defaults/characters/女/北欧/Elin/立绘/Elin.png",
       "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
         "scale": 1.15
-      }
+      },
+      "expressionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "actionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "activeExpression": -1,
+      "activeAction": -1
     },
     {
       "id": "npc-nuanli",
@@ -464,13 +572,40 @@
       "personality": "温和、细心。不急着把别人的话收成结论。",
       "speechStyle": "句子整。先把问题问清楚，再给一个能核对的说法。",
       "avatarFile": "",
-      "fullBodyFile": "assets/defaults/characters/女/东方/暖璃.png",
+      "fullBodyFile": "assets/defaults/characters/女/东方/暖璃/立绘/暖璃.png",
       "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
         "scale": 1.15
-      }
+      },
+      "expressionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "actionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "activeExpression": -1,
+      "activeAction": -1
     },
     {
       "id": "npc-yuetong",
@@ -481,13 +616,40 @@
       "personality": "活泼，嘴快，好奇压过规矩一半。",
       "speechStyle": "快，爱接话。偶尔跑远，再自己绕回来。",
       "avatarFile": "",
-      "fullBodyFile": "assets/defaults/characters/女/东方/月曈.png",
+      "fullBodyFile": "assets/defaults/characters/女/东方/月曈/立绘/月曈.png",
       "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
         "scale": 1.15
-      }
+      },
+      "expressionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "actionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "activeExpression": -1,
+      "activeAction": -1
     },
     {
       "id": "npc-qingyan",
@@ -498,13 +660,40 @@
       "personality": "话少，界限清楚。不为了热闹把话说第二遍。",
       "speechStyle": "慢。不重复。没问到的不说。",
       "avatarFile": "",
-      "fullBodyFile": "assets/defaults/characters/女/东方/清言.png",
+      "fullBodyFile": "assets/defaults/characters/女/东方/清言/立绘/清言.png",
       "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
         "scale": 1.15
-      }
+      },
+      "expressionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "actionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "activeExpression": -1,
+      "activeAction": -1
     },
     {
       "id": "npc-chutang",
@@ -515,13 +704,40 @@
       "personality": "热，但不硬闯。先告诉你哪条路今晚走得过。",
       "speechStyle": "口语。爱提街道、后门和「这条线今晚还亮着」。",
       "avatarFile": "",
-      "fullBodyFile": "assets/defaults/characters/女/现代/初棠.png",
+      "fullBodyFile": "assets/defaults/characters/女/现代/初棠/立绘/初棠.png",
       "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
         "scale": 1.15
-      }
+      },
+      "expressionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "actionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "activeExpression": -1,
+      "activeAction": -1
     },
     {
       "id": "npc-xingxuan",
@@ -532,13 +748,40 @@
       "personality": "傲，嘴硬。不轻易认输，也不把半成品给人看。",
       "speechStyle": "可以很长，但收在她自己的标准上。催促只会让她更慢。",
       "avatarFile": "",
-      "fullBodyFile": "assets/defaults/characters/女/现代/星璇.png",
+      "fullBodyFile": "assets/defaults/characters/女/现代/星璇/立绘/星璇.png",
       "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
         "scale": 1.15
-      }
+      },
+      "expressionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "actionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "activeExpression": -1,
+      "activeAction": -1
     },
     {
       "id": "npc-xuejing",
@@ -549,13 +792,40 @@
       "personality": "表面温婉，距离感清楚。笑的时候也不等于答应。",
       "speechStyle": "轻，慢。一句里留一点没说完的笑。",
       "avatarFile": "",
-      "fullBodyFile": "assets/defaults/characters/女/现代/雪璟.png",
+      "fullBodyFile": "assets/defaults/characters/女/现代/雪璟/立绘/雪璟.png",
       "thinkingFile": "",
       "stagePose": {
         "x": 0,
         "y": 0,
         "scale": 1.15
-      }
+      },
+      "expressionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "actionFiles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "activeExpression": -1,
+      "activeAction": -1
     }
   ],
   "sessions": [

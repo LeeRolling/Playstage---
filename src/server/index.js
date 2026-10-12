@@ -21,7 +21,7 @@ import {
   updateModel,
 } from "../domain/index.js";
 import { completeChat, createLocalWarmKeeper, probeBackend, probeLocalReady } from "./chat.js";
-import { resolveStoredPicture, retargetLibraryPictures } from "./pictures.js";
+import { adoptCharacterFolderSlots, resolveStoredPicture, retargetLibraryPictures, settleCharacterPortraits } from "./pictures.js";
 import { readHardware } from "./hardware.js";
 import { replyToPlayer } from "./reply.js";
 import { openStore } from "./store.js";
@@ -35,9 +35,15 @@ const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "127.0.0.1";
 const store = openStore(path.join(root, "data"));
 let library = store.load();
+settleCharacterPortraits(library, root);
 const pictured = retargetLibraryPictures(library, root);
 if (pictured.changed) {
   library = pictured.library;
+  store.save(library);
+}
+const adopted = adoptCharacterFolderSlots(library, root);
+if (adopted.changed) {
+  library = adopted.library;
   store.save(library);
 }
 const armed = armModelRetest(library);
@@ -185,7 +191,7 @@ const server = http.createServer(async (request, response) => {
     }
     if (url.pathname === "/api/media" && request.method === "POST") {
       const body = await readJson(request, { requireType: false, limit: 8_000_000 });
-      const saved = saveMedia(body.dataUrl);
+      const saved = saveMedia(body.dataUrl, { folder: body.folder, fileName: body.fileName });
       return send(response, 200, saved);
     }
     if (url.pathname === "/api/health" && request.method === "GET") {
@@ -383,16 +389,59 @@ async function probeOllama(localBaseUrl) {
   return false;
 }
 
-function saveMedia(dataUrl) {
+function saveMedia(dataUrl, place) {
   const match = /^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=\s]+)$/.exec(String(dataUrl || ""));
   if (!match) throw new Error("请上传一张图片。裁剪后再保存。");
   const ext = match[1] === "png" ? "png" : match[1] === "webp" ? "webp" : "jpg";
   const buffer = Buffer.from(match[2].replace(/\s/g, ""), "base64");
   if (!buffer.length || buffer.length > 6_000_000) throw new Error("这张图太大或是空的。");
+  const placed = placedMediaPath(place, ext);
+  if (placed) {
+    fs.mkdirSync(path.dirname(placed.abs), { recursive: true });
+    fs.writeFileSync(placed.abs, buffer);
+    return { path: placed.rel, url: mediaPublicUrl(placed.rel) };
+  }
   fs.mkdirSync(mediaDir, { recursive: true });
   const filename = `img-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.${ext}`;
   fs.writeFileSync(path.join(mediaDir, filename), buffer);
   return { path: `data/media/${filename}`, url: `/media/${filename}` };
+}
+
+function placedMediaPath(place, ext) {
+  if (!place || (place.folder == null && place.fileName == null)) return null;
+  const folder = sanitizeMediaFolder(place.folder);
+  const fileName = sanitizeMediaStem(place.fileName);
+  if (!folder || !fileName) throw new Error("这张图没有放进角色文件夹。");
+  if (!folder.startsWith("assets/defaults/characters/") && !folder.startsWith("data/media/")) {
+    throw new Error("图片只能放进这个角色自己的文件夹。");
+  }
+  const rel = `${folder}/${fileName}.${ext}`;
+  const abs = path.resolve(root, rel);
+  const base = path.resolve(root);
+  if (abs !== base && !abs.startsWith(`${base}${path.sep}`)) throw new Error("这张图没有放进角色文件夹。");
+  return { rel, abs };
+}
+
+function sanitizeMediaFolder(value) {
+  const rel = String(value || "")
+    .replace(/\\/g, "/")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
+  if (!rel || rel.includes("..")) return "";
+  const parts = rel.split("/");
+  if (parts.some((part) => !part || part === "." || part === "..")) return "";
+  return parts.join("/");
+}
+
+function sanitizeMediaStem(value) {
+  const stem = String(value || "").trim();
+  if (!/^[0-9A-Za-z_-]{1,32}$/.test(stem)) return "";
+  return stem;
+}
+
+function mediaPublicUrl(rel) {
+  if (rel.startsWith("data/media/")) return `/media/${rel.slice("data/media/".length)}`;
+  return `/${rel}`;
 }
 
 function openBrowser(page) {

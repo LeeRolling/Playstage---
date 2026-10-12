@@ -5,6 +5,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { ACTION_SLOT_COUNT, characterFolderLayout, EXPRESSION_SLOT_COUNT, slotFileName } from "../domain/characters.js";
 
 const IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
 
@@ -22,6 +23,8 @@ export function retargetLibraryPictures(library, root) {
     if (person.avatarFile) person.avatarFile = rewrite(person.avatarFile);
     if (person.fullBodyFile) person.fullBodyFile = rewrite(person.fullBodyFile);
     if (person.thinkingFile) person.thinkingFile = rewrite(person.thinkingFile);
+    if (Array.isArray(person.expressionFiles)) person.expressionFiles = rewriteList(person.expressionFiles, rewrite);
+    if (Array.isArray(person.actionFiles)) person.actionFiles = rewriteList(person.actionFiles, rewrite);
   }
   for (const book of next.worldBooks || []) {
     for (const place of book.locations || []) {
@@ -52,6 +55,81 @@ export function resolveStoredPicture(root, stored) {
   if (rel.startsWith("assets/")) {
     const unique = findUniqueByStem(path.join(root, "assets"), path.basename(rel));
     if (unique && safeResolve(root, relativePosix(root, unique)) === unique) return relativePosix(root, unique);
+  }
+  return "";
+}
+
+/**
+ * 立绘路径已经迁到「角色名/立绘/」但图还在旁边的单张文件上时，抄一份进新文件夹。
+ * 原来的图留下，不删。
+ */
+export function settleCharacterPortraits(library, root) {
+  for (const person of library?.characters || []) {
+    const stored = String(person?.fullBodyFile || "").replace(/\\/g, "/").trim();
+    const legacy = legacySinglePortrait(stored);
+    if (!legacy) continue;
+    const nextAbs = safeResolve(root, stored);
+    const oldAbs = safeResolve(root, legacy);
+    if (!nextAbs || !oldAbs || !isFile(oldAbs) || isFile(nextAbs)) continue;
+    fs.mkdirSync(path.dirname(nextAbs), { recursive: true });
+    fs.copyFileSync(oldAbs, nextAbs);
+  }
+}
+
+/**
+ * 表情、动作某一格还是空的，就看角色文件夹里有没有 01、02 这种编号的图。
+ * 只认这一格自己的文件夹，不去别的目录乱配。
+ */
+export function adoptCharacterFolderSlots(library, root) {
+  if (!library || typeof library !== "object") return { library, changed: false };
+  const next = structuredClone(library);
+  let changed = false;
+  for (const person of next.characters || []) {
+    const layout = characterFolderLayout(person);
+    if (fillEmptySlots(person, "expressionFiles", EXPRESSION_SLOT_COUNT, layout.expressionDir, root)) changed = true;
+    if (fillEmptySlots(person, "actionFiles", ACTION_SLOT_COUNT, layout.actionDir, root)) changed = true;
+  }
+  return changed ? { library: next, changed: true } : { library, changed: false };
+}
+
+function rewriteList(files, rewrite) {
+  if (!Array.isArray(files)) return files;
+  return files.map((file) => (file ? rewrite(file) : file));
+}
+
+function legacySinglePortrait(stored) {
+  const match = /^(.*)\/([^/]+)\/立绘\/([^/]+\.(png|jpe?g|webp|gif))$/i.exec(stored);
+  if (!match) return "";
+  const parent = match[1];
+  const folder = match[2];
+  const file = match[3];
+  const stem = file.replace(/\.[^.]+$/, "");
+  if (folder.normalize("NFC") !== stem.normalize("NFC")) return "";
+  return `${parent}/${file}`;
+}
+
+function fillEmptySlots(person, key, count, dir, root) {
+  if (!dir) return false;
+  const files = Array.isArray(person[key]) ? person[key].slice() : [];
+  while (files.length < count) files.push("");
+  let touched = false;
+  for (let index = 0; index < count; index += 1) {
+    if (files[index]) continue;
+    const found = findNamedImage(root, dir, slotFileName(index));
+    if (!found) continue;
+    files[index] = found;
+    touched = true;
+  }
+  if (!touched) return false;
+  person[key] = files.slice(0, count);
+  return true;
+}
+
+function findNamedImage(root, dir, stem) {
+  for (const ext of IMAGE_EXTS) {
+    const rel = `${dir}/${stem}${ext}`;
+    const abs = safeResolve(root, rel);
+    if (abs && isFile(abs)) return rel;
   }
   return "";
 }

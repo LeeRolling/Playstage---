@@ -3,7 +3,14 @@
  * 夜晚图与白天同一文件夹，文件名里的「_白天」换成「_晚上」。
  */
 
-import { DEFAULT_STAGE_POSE, ensureCharacterPoses, ensureThinkingFiles } from "./characters.js";
+import {
+  DEFAULT_STAGE_POSE,
+  ensureCharacterPoses,
+  ensureCharacterVisuals,
+  ensureThinkingFiles,
+  freshCharacterVisuals,
+  migratePortraitFile,
+} from "./characters.js";
 import { defaultCloudSlots, ensureModelSlots } from "./models.js";
 import { ensureCurrentLocation } from "./scene.js";
 import { DEFAULT_SETTINGS, ensureSettings } from "./settings.js";
@@ -119,7 +126,9 @@ export function createSeedLibrary() {
 
 export function migrateLibrary(raw) {
   if (raw && raw.revision >= 2 && Array.isArray(raw.worldBooks) && Array.isArray(raw.stages)) {
-    return ensureLibraryModel(ensureCurrentLocation(ensureCharacterPoses(ensureThinkingFiles(ensureSettings(raw)))));
+    return ensureLibraryModel(
+      ensureCurrentLocation(ensureCharacterPoses(ensureThinkingFiles(ensureCharacterVisuals(ensureSettings(raw))))),
+    );
   }
   const seed = createSeedLibrary();
   if (raw?.guide) {
@@ -183,6 +192,7 @@ function player() {
     fullBodyFile: "",
     thinkingFile: "",
     stagePose: { ...DEFAULT_STAGE_POSE },
+    ...freshCharacterVisuals(),
   };
 }
 
@@ -196,9 +206,10 @@ function npc(id, stageId, name, folder, fileName, summary, personality, speechSt
     personality,
     speechStyle,
     avatarFile: "",
-    fullBodyFile: `assets/defaults/characters/女/${folder}/${fileName}`,
+    fullBodyFile: migratePortraitFile(`assets/defaults/characters/女/${folder}/${fileName}`, name),
     thinkingFile: "",
     stagePose: { ...DEFAULT_STAGE_POSE },
+    ...freshCharacterVisuals(),
   };
 }
 

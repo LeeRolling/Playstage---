@@ -15,6 +15,14 @@ import {
 import { resolveScene } from "./scene.js";
 import { buildActingMessages, commitNpcReply, dispatch, finishCoolDown, planSpeakers, sessionForm, toPublicLibrary } from "./index.js";
 import { resolveUiSkin } from "./settings.js";
+import {
+  ACTION_SLOT_COUNT,
+  characterFolderLayout,
+  emptyActionFiles,
+  emptyExpressionFiles,
+  EXPRESSION_SLOT_COUNT,
+  migratePortraitFile,
+} from "./characters.js";
 
 test("开局有三本世界书，一场戏还没把九个人请上台", () => {
   const library = createSeedLibrary();
@@ -70,11 +78,15 @@ test("默认角色写下全身图路径", () => {
   const astrid = library.characters.find((item) => item.name === "Astrid");
   const nuanli = library.characters.find((item) => item.name === "暖璃");
   const chutang = library.characters.find((item) => item.name === "初棠");
-  assert.equal(astrid.fullBodyFile, "assets/defaults/characters/女/北欧/Astrid.png");
-  assert.equal(nuanli.fullBodyFile, "assets/defaults/characters/女/东方/暖璃.png");
-  assert.equal(chutang.fullBodyFile, "assets/defaults/characters/女/现代/初棠.png");
+  assert.equal(astrid.fullBodyFile, "assets/defaults/characters/女/北欧/Astrid/立绘/Astrid.png");
+  assert.equal(nuanli.fullBodyFile, "assets/defaults/characters/女/东方/暖璃/立绘/暖璃.png");
+  assert.equal(chutang.fullBodyFile, "assets/defaults/characters/女/现代/初棠/立绘/初棠.png");
   assert.equal(astrid.thinkingFile, "");
   assert.equal(nuanli.thinkingFile, "");
+  assert.equal(nuanli.expressionFiles.length, EXPRESSION_SLOT_COUNT);
+  assert.equal(nuanli.actionFiles.length, ACTION_SLOT_COUNT);
+  assert.equal(nuanli.activeExpression, -1);
+  assert.equal(nuanli.activeAction, -1);
 });
 
 test("说话里提到地点会换景，特殊情景没图时只做标记", () => {
@@ -361,7 +373,7 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
   });
   const chutang = partial.library.characters.find((item) => item.id === "npc-chutang");
   assert.equal(chutang.summary.length > 0, true);
-  assert.equal(chutang.fullBodyFile, "assets/defaults/characters/女/现代/初棠.png");
+  assert.equal(chutang.fullBodyFile, "assets/defaults/characters/女/现代/初棠/立绘/初棠.png");
   assert.deepEqual(chutang.stagePose, { x: -20, y: 6, scale: 0.4 });
 
   const textOnly = dispatch(partial.library, {
@@ -408,7 +420,17 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
     stages: [{ id: "stage-frost" }],
     worldBooks: [{ id: "book-frost" }],
     settings: { spriteScale: "large", dialogScale: "short", uiSkin: "classic", uiSkinMode: "auto" },
-    characters: [{ id: "npc-astrid", stagePose: { x: 0, y: 0, scale: 1.15 }, thinkingFile: "" }],
+    characters: [
+      {
+        id: "npc-astrid",
+        stagePose: { x: 0, y: 0, scale: 1.15 },
+        thinkingFile: "",
+        expressionFiles: emptyExpressionFiles(),
+        actionFiles: emptyActionFiles(),
+        activeExpression: -1,
+        activeAction: -1,
+      },
+    ],
   };
   assert.equal(migrateLibrary(stable), stable);
 
@@ -445,7 +467,7 @@ test("思考立绘跟着人设保存，旧档缺了就是空", () => {
   });
   const nuanli = saved.library.characters.find((item) => item.id === "npc-nuanli");
   assert.equal(nuanli.thinkingFile, "data/media/img-think.png");
-  assert.equal(nuanli.fullBodyFile, "assets/defaults/characters/女/东方/暖璃.png");
+  assert.equal(nuanli.fullBodyFile, "assets/defaults/characters/女/东方/暖璃/立绘/暖璃.png");
   assert.equal(saved.library.characters.find((item) => item.id === "npc-yuetong").thinkingFile, "");
 
   const kept = dispatch(saved.library, {
@@ -480,9 +502,121 @@ test("思考立绘跟着人设保存，旧档缺了就是空", () => {
   };
   const migrated = migrateLibrary(old);
   assert.equal(migrated.characters[0].thinkingFile, "");
-  assert.equal(migrated.characters[0].fullBodyFile, "assets/defaults/characters/女/北欧/Astrid.png");
+  assert.equal(migrated.characters[0].fullBodyFile, "assets/defaults/characters/女/北欧/Astrid/立绘/Astrid.png");
   assert.equal(migrated.characters[1].thinkingFile, "data/media/sigrid-think.png");
   assert.equal(migrated.characters[2].thinkingFile, "");
+  assert.equal(migrated.characters[0].expressionFiles.length, 10);
+  assert.equal(migrated.characters[0].actionFiles.length, 11);
+});
+
+test("表情十格、动作十一格会跟着人设留下，单张图迁进角色文件夹", () => {
+  const seeded = createSeedLibrary();
+  assert.equal(EXPRESSION_SLOT_COUNT, 10);
+  assert.equal(ACTION_SLOT_COUNT, 11);
+  assert.deepEqual(toPublicLibrary(seeded).view.visualSlots, { expressions: 10, actions: 11 });
+  const nuanli = seeded.characters.find((item) => item.name === "暖璃");
+  assert.equal(migratePortraitFile("assets/defaults/characters/女/东方/暖璃.png", "暖璃"), nuanli.fullBodyFile);
+  assert.deepEqual(characterFolderLayout({ name: "暖璃", fullBodyFile: "assets/defaults/characters/女/东方/暖璃.png" }), {
+    root: "assets/defaults/characters/女/东方/暖璃",
+    portraitDir: "assets/defaults/characters/女/东方/暖璃/立绘",
+    expressionDir: "assets/defaults/characters/女/东方/暖璃/表情",
+    actionDir: "assets/defaults/characters/女/东方/暖璃/动作",
+    portraitFile: "assets/defaults/characters/女/东方/暖璃/立绘/暖璃.png",
+  });
+  assert.equal(migratePortraitFile("data/media/img-123.png", "暖璃"), "data/media/img-123.png");
+  assert.equal(
+    migratePortraitFile("assets/defaults/characters/女/东方/暖璃/立绘/暖璃.png", "暖璃"),
+    "assets/defaults/characters/女/东方/暖璃/立绘/暖璃.png",
+  );
+
+  const expressions = emptyExpressionFiles();
+  expressions[2] = " data/media/暖璃/表情/03.png ";
+  const saved = dispatch(seeded, {
+    type: "character.update",
+    id: "npc-nuanli",
+    fields: { expressionFiles: expressions, activeExpression: 2 },
+  });
+  const picked = saved.library.characters.find((item) => item.id === "npc-nuanli");
+  assert.equal(picked.expressionFiles.length, 10);
+  assert.equal(picked.expressionFiles[2], "data/media/暖璃/表情/03.png");
+  assert.equal(picked.expressionFiles[0], "");
+  assert.equal(picked.actionFiles.length, 11);
+  assert.equal(picked.activeExpression, 2);
+  assert.equal(picked.activeAction, -1);
+  assert.equal(saved.library.characters.find((item) => item.id === "npc-yuetong").activeExpression, -1);
+
+  const acted = dispatch(saved.library, {
+    type: "character.update",
+    id: "npc-nuanli",
+    fields: { activeAction: 4 },
+  });
+  const onStage = acted.library.characters.find((item) => item.id === "npc-nuanli");
+  assert.equal(onStage.activeAction, 4);
+  assert.equal(onStage.activeExpression, -1);
+  assert.equal(onStage.expressionFiles[2], "data/media/暖璃/表情/03.png");
+
+  const kept = dispatch(acted.library, {
+    type: "character.update",
+    id: "npc-nuanli",
+    fields: { summary: "仍在收书" },
+  });
+  const keptPerson = kept.library.characters.find((item) => item.id === "npc-nuanli");
+  assert.equal(keptPerson.summary, "仍在收书");
+  assert.equal(keptPerson.activeAction, 4);
+  assert.equal(keptPerson.expressionFiles[2], "data/media/暖璃/表情/03.png");
+  assert.equal(toPublicLibrary(kept.library).characters.find((item) => item.id === "npc-nuanli").mediaFolders.expressionDir, "assets/defaults/characters/女/东方/暖璃/表情");
+
+  const old = {
+    revision: 2,
+    stagePicked: true,
+    activeStageId: "stage-azure",
+    stages: [{ id: "stage-azure" }],
+    worldBooks: [{ id: "book-azure" }],
+    settings: { spriteScale: "large", dialogScale: "short", uiSkin: "classic", uiSkinMode: "auto" },
+    sessions: [{ id: "session-main", worldBookId: "", playerCardId: "player-guest", npcIds: ["npc-nuanli"], messages: [], state: { alive: {} } }],
+    characters: [
+      {
+        id: "npc-nuanli",
+        kind: "npc",
+        name: "暖璃",
+        fullBodyFile: "assets/defaults/characters/女/东方/暖璃.png",
+        stagePose: { x: 3, y: -2, scale: 1.2 },
+      },
+      {
+        id: "npc-extra",
+        name: "暖璃",
+        fullBodyFile: "data/media/img-keep.png",
+      },
+    ],
+  };
+  const migrated = migrateLibrary(old);
+  assert.notEqual(migrated, old);
+  assert.equal(old.characters[0].fullBodyFile, "assets/defaults/characters/女/东方/暖璃.png");
+  const moved = migrated.characters.find((item) => item.id === "npc-nuanli");
+  assert.equal(moved.fullBodyFile, "assets/defaults/characters/女/东方/暖璃/立绘/暖璃.png");
+  assert.equal(moved.expressionFiles.length, 10);
+  assert.equal(moved.actionFiles.length, 11);
+  assert.deepEqual(moved.expressionFiles, emptyExpressionFiles());
+  assert.deepEqual(moved.actionFiles, emptyActionFiles());
+  assert.equal(moved.activeExpression, -1);
+  assert.equal(moved.activeAction, -1);
+  assert.deepEqual(moved.stagePose, { x: 3, y: -2, scale: 1.2 });
+  assert.equal(migrated.characters.find((item) => item.id === "npc-extra").fullBodyFile, "data/media/img-keep.png");
+  assert.equal(migrated.sessions[0].npcIds[0], "npc-nuanli");
+
+  const again = migrateLibrary(migrated);
+  assert.equal(again, migrated);
+
+  assert.equal(dispatch(seeded, { type: "character.create", kind: "npc" }).library.characters.at(-1).expressionFiles.length, 10);
+  assert.equal(dispatch(seeded, { type: "character.create", kind: "player" }).library.characters.at(-1).actionFiles.length, 11);
+  assert.equal(
+    dispatch(seeded, {
+      type: "character.update",
+      id: "npc-nuanli",
+      fields: { activeExpression: 99, activeAction: -3 },
+    }).library.characters.find((item) => item.id === "npc-nuanli").activeExpression,
+    -1,
+  );
 });
 
 test("剧情包占位导出含前文提要，导入只登记", () => {
