@@ -21,7 +21,7 @@ import {
   updateModel,
 } from "../domain/index.js";
 import { completeChat, createLocalWarmKeeper, probeBackend, probeLocalReady } from "./chat.js";
-import { resolveStoredPicture, retargetLibraryPictures } from "./pictures.js";
+import { resolveStoredPicture, retargetLibraryPictures, saveUploadedPicture } from "./pictures.js";
 import { readHardware } from "./hardware.js";
 import { replyToPlayer } from "./reply.js";
 import { openStore } from "./store.js";
@@ -185,7 +185,7 @@ const server = http.createServer(async (request, response) => {
     }
     if (url.pathname === "/api/media" && request.method === "POST") {
       const body = await readJson(request, { requireType: false, limit: 8_000_000 });
-      const saved = saveMedia(body.dataUrl);
+      const saved = saveUploadedPicture(root, body, library);
       return send(response, 200, saved);
     }
     if (url.pathname === "/api/health" && request.method === "GET") {
@@ -381,18 +381,6 @@ async function probeOllama(localBaseUrl) {
     }
   }
   return false;
-}
-
-function saveMedia(dataUrl) {
-  const match = /^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=\s]+)$/.exec(String(dataUrl || ""));
-  if (!match) throw new Error("请上传一张图片。裁剪后再保存。");
-  const ext = match[1] === "png" ? "png" : match[1] === "webp" ? "webp" : "jpg";
-  const buffer = Buffer.from(match[2].replace(/\s/g, ""), "base64");
-  if (!buffer.length || buffer.length > 6_000_000) throw new Error("这张图太大或是空的。");
-  fs.mkdirSync(mediaDir, { recursive: true });
-  const filename = `img-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.${ext}`;
-  fs.writeFileSync(path.join(mediaDir, filename), buffer);
-  return { path: `data/media/${filename}`, url: `/media/${filename}` };
 }
 
 function openBrowser(page) {

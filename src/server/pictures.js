@@ -1,10 +1,18 @@
 /**
  * 图片路径和磁盘上的文件对不上时，在这里找同名的那一张。
  * 功能层只记路径。这里不删用户自己的图。
+ * 新裁的表情、动作写进 assets/characters/角色名/表情|动作/，文件名用固定编号。
+ * 全身图和思考图仍可以是原来的单文件。立绘目录这一版不强制搬迁。
  */
 
 import fs from "node:fs";
 import path from "node:path";
+import { ACTION_SLOTS, EXPRESSION_SLOTS } from "../domain/characters.js";
+
+const ART_DIR = {
+  expression: "表情",
+  action: "动作",
+};
 
 const IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
 
@@ -22,6 +30,8 @@ export function retargetLibraryPictures(library, root) {
     if (person.avatarFile) person.avatarFile = rewrite(person.avatarFile);
     if (person.fullBodyFile) person.fullBodyFile = rewrite(person.fullBodyFile);
     if (person.thinkingFile) person.thinkingFile = rewrite(person.thinkingFile);
+    rewriteArtMap(person.expressions, rewrite);
+    rewriteArtMap(person.actions, rewrite);
   }
   for (const book of next.worldBooks || []) {
     for (const place of book.locations || []) {
@@ -33,6 +43,50 @@ export function retargetLibraryPictures(library, root) {
     }
   }
   return changed ? { library: next, changed: true } : { library, changed: false };
+}
+
+/**
+ * 只接受表情、动作的固定编号。角色名里的斜杠会拿掉，避免写到文件夹外面。
+ * 名字清完是空的，就改用角色 id。
+ */
+export function characterArtRelativePath({ name, id, kind, slotId, ext }) {
+  const folder = ART_DIR[kind];
+  const slots = kind === "expression" ? EXPRESSION_SLOTS : kind === "action" ? ACTION_SLOTS : [];
+  if (!folder || !slots.some((slot) => slot.id === slotId)) return "";
+  const safeExt = ext === "png" || ext === "jpg" || ext === "webp" ? ext : "";
+  if (!safeExt) return "";
+  const dir = safeCharacterFolder(name) || safeCharacterFolder(id);
+  if (!dir) return "";
+  return `assets/characters/${dir}/${folder}/${slotId}.${safeExt}`;
+}
+
+/**
+ * 表情和动作落在角色文件夹里。其它图仍写进 data/media，文件名随机，不覆盖旧图。
+ */
+export function saveUploadedPicture(root, body, library) {
+  const parsed = parseImageDataUrl(body?.dataUrl);
+  const kind = body?.kind === "expression" || body?.kind === "action" ? body.kind : "";
+  if (!kind) {
+    const mediaDir = path.join(root, "data/media");
+    fs.mkdirSync(mediaDir, { recursive: true });
+    const filename = `img-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.${parsed.ext}`;
+    fs.writeFileSync(path.join(mediaDir, filename), parsed.buffer);
+    return { path: `data/media/${filename}`, url: `/media/${filename}` };
+  }
+  const person = (library?.characters || []).find((item) => item.id === body.characterId);
+  if (!person) throw new Error("找不到这张人设卡。");
+  const rel = characterArtRelativePath({
+    name: person.name,
+    id: person.id,
+    kind,
+    slotId: body.slotId,
+    ext: parsed.ext,
+  });
+  const abs = rel ? safeResolve(root, rel) : "";
+  if (!abs) throw new Error("这张图没有对上表情或动作。");
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, parsed.buffer);
+  return { path: rel, url: `/${rel.split("/").map((part) => encodeURIComponent(part)).join("/")}` };
 }
 
 /**
@@ -54,6 +108,35 @@ export function resolveStoredPicture(root, stored) {
     if (unique && safeResolve(root, relativePosix(root, unique)) === unique) return relativePosix(root, unique);
   }
   return "";
+}
+
+function rewriteArtMap(map, rewrite) {
+  if (!map || typeof map !== "object" || Array.isArray(map)) return;
+  for (const id of Object.keys(map)) {
+    if (typeof map[id] !== "string" || !map[id]) continue;
+    map[id] = rewrite(map[id]);
+  }
+}
+
+function parseImageDataUrl(dataUrl) {
+  const match = /^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=\s]+)$/.exec(String(dataUrl || ""));
+  if (!match) throw new Error("请上传一张图片。裁剪后再保存。");
+  const ext = match[1] === "png" ? "png" : match[1] === "webp" ? "webp" : "jpg";
+  const buffer = Buffer.from(match[2].replace(/\s/g, ""), "base64");
+  if (!buffer.length || buffer.length > 6_000_000) throw new Error("这张图太大或是空的。");
+  return { ext, buffer };
+}
+
+function safeCharacterFolder(value) {
+  const text = String(value || "")
+    .normalize("NFC")
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "")
+    .replace(/^\.+/, "")
+    .replace(/[. ]+$/g, "")
+    .trim();
+  if (!text || text === "." || text === "..") return "";
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(text)) return "";
+  return text.slice(0, 40);
 }
 
 function normalizeRel(stored) {

@@ -40,6 +40,9 @@ let pendingAnchor = "";
 let sending = false;
 let thinkingSpeakerId = "";
 let speakWatch = 0;
+let motionCardId = "";
+let motionReturnScroll = 0;
+let ledgerScrollHold = null;
 let localWarm = { pinned: false, message: "", idleMinutes: 10 };
 let composerDraft = "";
 const previews = new Map();
@@ -76,8 +79,10 @@ function render() {
   const sceneState = sceneUrl ? sceneCache.get(sceneUrl) : "";
   const sceneOk = sceneState === "ok" && view === "stage";
   const sceneMissing = sceneState === "missing";
+  const heldLedger = ledgerScrollHold;
+  ledgerScrollHold = null;
   const keepScroll = paintedView === view;
-  const ledgerScroll = keepScroll ? app.querySelector(".ledger")?.scrollTop || 0 : 0;
+  const ledgerScroll = heldLedger != null ? heldLedger : keepScroll ? app.querySelector(".ledger")?.scrollTop || 0 : 0;
   const sideScroll = keepScroll ? app.querySelector(".side")?.scrollTop || 0 : 0;
   const windowScroll = keepScroll ? window.scrollY : 0;
   const dialogPreset = presetOf(DIALOG_PRESETS, library.settings?.dialogScale, "short");
@@ -120,14 +125,15 @@ function render() {
   paintedView = view;
   const ledger = app.querySelector(".ledger");
   const side = app.querySelector(".side");
-  if (keepScroll && ledger) ledger.scrollTop = ledgerScroll;
+  const restoreLedger = keepScroll || heldLedger != null;
+  if (restoreLedger && ledger) ledger.scrollTop = ledgerScroll;
   if (keepScroll && side) side.scrollTop = sideScroll;
   if (keepScroll) window.scrollTo(0, windowScroll);
-  if (keepScroll) {
+  if (restoreLedger) {
     requestAnimationFrame(() => {
       if (ledger?.isConnected) ledger.scrollTop = ledgerScroll;
-      if (side?.isConnected) side.scrollTop = sideScroll;
-      window.scrollTo(0, windowScroll);
+      if (keepScroll && side?.isConnected) side.scrollTop = sideScroll;
+      if (keepScroll) window.scrollTo(0, windowScroll);
       revealAnchor();
     });
   }
@@ -217,6 +223,7 @@ function ribbonHtml(scene, missingFile) {
 }
 
 function spriteHtml(person, speaker) {
+  // TODO: 模型台词自动切换表情/动作，以及世界书同义词词典，留到后面的测试版。
   const thinkingSrc = thinkingSpeakerId === person.id ? pictureUrl(person, "thinking") : "";
   const src = thinkingSrc || pictureUrl(person, "fullBody");
   const someoneSpeaking = Boolean(speaker?.id) && speaker.id !== "system";
@@ -374,10 +381,12 @@ function locationCard(place) {
 }
 
 function cardsHtml() {
+  const motion = library.characters.find((item) => item.id === motionCardId && item.kind === "npc");
+  if (motion) return motionPageHtml(motion);
   const players = library.characters.filter((item) => item.kind === "player");
   return `
     <h2>人设卡</h2>
-    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像、全身图和思考立绘都可以裁一下再留下。新裁的图会存成 PNG，下面的路径会换成新文件，透明底会留下来。原来的图还在文件夹里，不会被删掉。左右、上下和放大记在这张卡上，每一场都用这一套。</p>
+    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像、全身图和思考立绘都可以裁一下再留下。新裁的图会存成 PNG，下面的路径会换成新文件，透明底会留下来。原来的图还在文件夹里，不会被删掉。左右、上下和放大记在这张卡上，每一场都用这一套。角色可以再到【动作与表情】里配十张表情和十一张动作。台上暂时还是用全身图。</p>
     <div class="row">
       <button class="primary" type="button" data-new="player">新的玩家人设</button>
       <button class="ghost" type="button" data-new="npc">新的角色（记在当前舞台）</button>
@@ -424,10 +433,55 @@ function cardHtml(person) {
       ${poseFieldsHtml(person)}
       <div class="row">
         <button class="primary" type="submit">保存人设</button>
+        ${person.kind === "npc" ? `<button class="ghost" type="button" data-motion="${esc(person.id)}">【动作与表情】</button>` : ""}
         <button class="danger" type="button" data-remove="${esc(person.id)}">删除</button>
       </div>
     </form>
   `;
+}
+
+function motionPageHtml(person) {
+  const catalog = artCatalog();
+  return `
+    <div class="motion-page">
+      <div class="row">
+        <button class="ghost" type="button" data-motion-back>返回</button>
+      </div>
+      <h2>${esc(person.name)}的动作与表情</h2>
+      <p class="help">这些图是给台上切换表情和动作用的。点缩略图可以看大图。模型说话时自动换图，以后再做。台上现在仍用全身图。</p>
+      <h3>表情</h3>
+      <div class="motion-grid">${motionSlotsHtml(person, "expression", catalog.expressions)}</div>
+      <h3>动作</h3>
+      <div class="motion-grid">${motionSlotsHtml(person, "action", catalog.actions)}</div>
+    </div>`;
+}
+
+function motionSlotsHtml(person, kind, slots) {
+  const map = kind === "expression" ? person.expressions : person.actions;
+  return (slots || [])
+    .map((slot) => {
+      const file = map && typeof map[slot.id] === "string" ? map[slot.id] : "";
+      const src = artPictureUrl(person, kind, slot.id);
+      return `
+        <div class="motion-slot">
+          <button type="button" class="motion-look" data-art-look="${esc(kind)}:${esc(slot.id)}">
+            ${src ? `<img class="thumb" alt="" src="${esc(src)}" />` : `<div class="thumb"></div>`}
+            <span>${esc(slot.label || slot.id)}</span>
+            <small>${esc(slot.id)}</small>
+          </button>
+          <input type="file" accept="image/*" data-crop="${esc(kind)}" data-person="${esc(person.id)}" data-slot="${esc(slot.id)}" />
+          <p class="help">${file ? "已记下" : "空着"}</p>
+        </div>`;
+    })
+    .join("");
+}
+
+function artCatalog() {
+  const spec = library.view?.performance || {};
+  return {
+    expressions: Array.isArray(spec.expressions) ? spec.expressions : [],
+    actions: Array.isArray(spec.actions) ? spec.actions : [],
+  };
 }
 
 function thinkingFieldsHtml(person) {
@@ -1000,6 +1054,11 @@ function bind() {
   app.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.dataset.view === "stage") forgetMissingScenes();
+      if (button.dataset.view !== "cards") motionCardId = "";
+      else if (view === "cards" && motionCardId) {
+        ledgerScrollHold = motionReturnScroll;
+        motionCardId = "";
+      }
       view = button.dataset.view;
       location.hash = view;
       notice = null;
@@ -1008,6 +1067,7 @@ function bind() {
   });
   app.querySelectorAll("[data-go]").forEach((button) => {
     button.addEventListener("click", () => {
+      if (button.dataset.go !== "cards") motionCardId = "";
       view = button.dataset.go;
       location.hash = view;
       render();
@@ -1186,15 +1246,38 @@ function bind() {
       input.value = "";
       if (!file) return;
       const kind = input.dataset.crop;
-      const portrait = kind === "avatar" || kind === "full" || kind === "thinking";
+      const art = kind === "expression" || kind === "action";
+      const portrait = kind === "avatar" || kind === "full" || kind === "thinking" || art;
       const aspect = kind === "avatar" ? 1 : portrait ? 2 / 3 : 16 / 9;
-      const title = kind === "avatar" ? "裁头像" : kind === "thinking" ? "裁思考立绘" : kind === "full" ? "裁全身图" : "裁地点图";
+      const title =
+        kind === "avatar"
+          ? "裁头像"
+          : kind === "thinking"
+            ? "裁思考立绘"
+            : kind === "expression"
+              ? "裁表情"
+              : kind === "action"
+                ? "裁动作"
+                : kind === "full"
+                  ? "裁全身图"
+                  : "裁地点图";
       openCropper({
         file,
         aspect,
         title,
         mime: preferredImageMime(file.type, kind),
+        placement: art ? { kind, characterId: input.dataset.person, slotId: input.dataset.slot } : null,
         onDone: async (savedPath) => {
+          if (art) {
+            const field = kind === "expression" ? "expressions" : "actions";
+            previews.set(`${input.dataset.person}:${kind}:${input.dataset.slot}`, mediaUrl(savedPath));
+            await act({
+              type: "character.update",
+              id: input.dataset.person,
+              fields: { [field]: { [input.dataset.slot]: savedPath } },
+            });
+            return;
+          }
           if (portrait) {
             const slot = kind === "avatar" ? "avatar" : kind === "thinking" ? "thinking" : "fullBody";
             const fields =
@@ -1219,6 +1302,28 @@ function bind() {
           });
         },
       });
+    });
+  });
+
+  app.querySelectorAll("[data-motion]").forEach((button) => {
+    button.addEventListener("click", () => {
+      motionReturnScroll = app.querySelector(".ledger")?.scrollTop || 0;
+      motionCardId = button.dataset.motion;
+      ledgerScrollHold = 0;
+      render();
+    });
+  });
+  app.querySelector("[data-motion-back]")?.addEventListener("click", () => {
+    motionCardId = "";
+    ledgerScrollHold = motionReturnScroll;
+    render();
+  });
+  app.querySelectorAll("[data-art-look]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const person = library.characters.find((item) => item.id === motionCardId);
+      if (!person) return;
+      const [kind, slotId] = String(button.dataset.artLook || "").split(":");
+      openArtPreview(person, kind, slotId);
     });
   });
 
@@ -1482,7 +1587,33 @@ function waitingNotice(local, late) {
   return "云端还没说完。快模型一般不用等这么久，可以再等一会儿。";
 }
 
-function openCropper({ file, aspect, title, mime, onDone }) {
+function openArtPreview(person, kind, slotId) {
+  const slots = kind === "expression" ? artCatalog().expressions : artCatalog().actions;
+  const slot = (slots || []).find((item) => item.id === slotId);
+  const src = artPictureUrl(person, kind, slotId);
+  if (!src) {
+    notice = { tone: "ok", text: "这一格还空着。" };
+    render();
+    return;
+  }
+  const overlay = document.createElement("div");
+  overlay.className = "modal-back";
+  overlay.innerHTML = `
+    <div class="modal art-preview" role="dialog" aria-modal="true">
+      <h2>${esc(person.name)} · ${esc(slot?.label || slotId)}</h2>
+      <p class="help">${esc(slotId)}。这是预览，台上仍用全身图。</p>
+      <img alt="" src="${esc(src)}" />
+      <div class="row"><button class="ghost" type="button" id="art-preview-close">关闭</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector("#art-preview-close").addEventListener("click", close);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
+  });
+}
+
+function openCropper({ file, aspect, title, mime, placement, onDone }) {
   const overlay = document.createElement("div");
   overlay.className = "modal-back";
   overlay.innerHTML = `
@@ -1580,7 +1711,7 @@ function openCropper({ file, aspect, title, mime, onDone }) {
       return;
     }
     try {
-      const savedPath = await uploadMedia(blob);
+      const savedPath = await uploadMedia(blob, placement);
       await onDone(savedPath);
     } catch (error) {
       notice = { tone: "bad", text: error instanceof Error ? error.message : "图片没保存下来。" };
@@ -1594,12 +1725,18 @@ function openCropper({ file, aspect, title, mime, onDone }) {
   }
 }
 
-async function uploadMedia(blob) {
+async function uploadMedia(blob, placement) {
   const dataUrl = await blobToDataUrl(blob);
+  const payload = { dataUrl };
+  if (placement?.kind && placement.slotId) {
+    payload.kind = placement.kind;
+    payload.characterId = placement.characterId;
+    payload.slotId = placement.slotId;
+  }
   const response = await fetch("/api/media", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ dataUrl }),
+    body: JSON.stringify(payload),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.message || "图片没保存下来。");
@@ -1672,6 +1809,14 @@ function currentSpeaker(session) {
   const person = last ? library.characters.find((item) => item.id === last.speakerId) : null;
   if (!person) return { id: "system", name: last?.speakerName || "戏台", src: "" };
   return { id: person.id, name: person.name, src: pictureUrl(person, "avatar") };
+}
+
+function artPictureUrl(person, kind, slotId) {
+  const preview = previews.get(`${person.id}:${kind}:${slotId}`);
+  if (preview) return preview;
+  const map = kind === "expression" ? person.expressions : person.actions;
+  const file = map && typeof map === "object" ? map[slotId] : "";
+  return mediaUrl(file);
 }
 
 function pictureUrl(person, slot) {
@@ -1750,7 +1895,7 @@ function mediaUrl(file) {
   const text = String(file || "");
   if (!text || text.includes("..")) return "";
   if (text.startsWith("blob:") || text.startsWith("data:")) return text;
-  if (text.startsWith("assets/defaults/")) return `/${encodeURI(text)}`;
+  if (text.startsWith("assets/")) return `/${encodeURI(text)}`;
   if (text.startsWith("data/media/")) return `/media/${encodeURI(text.slice("data/media/".length))}`;
   return "";
 }

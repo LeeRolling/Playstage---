@@ -871,6 +871,84 @@ a { color: var(--gold); }
 
 .portrait-row { display: flex; gap: 10px; align-items: center; }
 
+.motion-page h3 {
+  margin: 16px 0 8px;
+  font-size: 16px;
+  letter-spacing: 0.08em;
+}
+
+.motion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+.motion-slot {
+  min-width: 0;
+  padding: 8px;
+  border: var(--frame) solid var(--line);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.motion-look {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.motion-look .thumb {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 3;
+}
+
+.motion-look span {
+  font-size: 14px;
+  letter-spacing: 0.06em;
+}
+
+.motion-look small {
+  color: var(--ledger-muted);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.motion-slot input[type="file"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.motion-slot .help {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+
+.art-preview {
+  width: min(420px, 100%);
+}
+
+.art-preview img {
+  display: block;
+  width: min(280px, 72vw);
+  max-height: min(62vh, 520px);
+  object-fit: contain;
+  margin: 8px auto 14px;
+  background: var(--crop-bg);
+  border-radius: var(--radius-thumb);
+}
+
 /* 地点一块一块排。缩略图下面跟自己的路径和换图按钮，长路径在格子里截断，不再把整行撑出账本。 */
 .location-card {
   container-type: inline-size;

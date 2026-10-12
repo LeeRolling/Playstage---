@@ -5,8 +5,10 @@
  */
 
 import {
+  ACTION_SLOTS,
   createCharacter,
   DEFAULT_STAGE_POSE,
+  EXPRESSION_SLOTS,
   removeCharacter,
   STAGE_POSE_LIMITS,
   updateCharacter,
@@ -118,6 +120,10 @@ export function toPublicLibrary(library) {
         y: { ...STAGE_POSE_LIMITS.y },
         scale: { ...STAGE_POSE_LIMITS.scale },
       },
+    },
+    performance: {
+      expressions: EXPRESSION_SLOTS.map((slot) => ({ id: slot.id, label: slot.label })),
+      actions: ACTION_SLOTS.map((slot) => ({ id: slot.id, label: slot.label })),
     },
   };
   return next;

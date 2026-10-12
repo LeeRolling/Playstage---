@@ -56,3 +56,7 @@
 - `assets/defaults/backgrounds/现代/义体改造商店/赛博义体改造商店_白天.jpg`
 
 自己后加的地点图会裁好后放进 `data/media/`，不需要放进这个文件夹。
+
+## 表情和动作
+
+新裁的表情、动作不放在这个 defaults 文件夹里。它们按角色名字写到 `assets/characters/角色名/表情/` 和 `assets/characters/角色名/动作/`。说明见 `docs/动作与表情.md`。原来的全身图路径不用搬。

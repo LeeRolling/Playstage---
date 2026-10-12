@@ -21,6 +21,38 @@ export const STAGE_POSE_LIMITS = {
   scale: { min: 0.4, max: 2.4, step: 0.05 },
 };
 
+/**
+ * 表情和动作用固定编号当键，不用中文情绪词。
+ * 界面上可以写短中文，存下来的路径和文件名仍用这些编号。
+ * TODO: 模型台词自动切换表情/动作，以及世界书同义词词典，留到后面的测试版。
+ */
+export const EXPRESSION_SLOTS = [
+  { id: "expr_neutral", label: "中立" },
+  { id: "expr_smile", label: "笑" },
+  { id: "expr_laugh", label: "大笑" },
+  { id: "expr_sad", label: "难过" },
+  { id: "expr_angry", label: "生气" },
+  { id: "expr_shy", label: "害羞" },
+  { id: "expr_surprised", label: "惊讶" },
+  { id: "expr_think", label: "思考" },
+  { id: "expr_pain", label: "痛" },
+  { id: "expr_love", label: "喜欢" },
+];
+
+export const ACTION_SLOTS = [
+  { id: "pose_stand", label: "站" },
+  { id: "pose_sit", label: "坐" },
+  { id: "pose_walk", label: "走" },
+  { id: "pose_run", label: "跑" },
+  { id: "pose_wave", label: "挥手" },
+  { id: "pose_point", label: "指" },
+  { id: "pose_cross_arms", label: "抱臂" },
+  { id: "pose_cover_face", label: "掩面" },
+  { id: "pose_kneel", label: "跪" },
+  { id: "pose_lie", label: "躺" },
+  { id: "pose_fight", label: "打斗" },
+];
+
 export function freshStagePose() {
   return { x: DEFAULT_STAGE_POSE.x, y: DEFAULT_STAGE_POSE.y, scale: DEFAULT_STAGE_POSE.scale };
 }
@@ -63,6 +95,32 @@ export function ensureThinkingFiles(library) {
   return { ...library, characters };
 }
 
+/**
+ * 旧档没有表情、动作两张表时补成空的。编号以外的键丢掉。已写好的路径留着。
+ */
+export function ensureCharacterArt(library) {
+  if (!Array.isArray(library?.characters) || library.characters.length === 0) return library;
+  let changed = false;
+  const characters = library.characters.map((character) => {
+    const expressions = normalizeArtMap(character?.expressions, EXPRESSION_SLOTS);
+    const actions = normalizeArtMap(character?.actions, ACTION_SLOTS);
+    if (artMapEquals(character?.expressions, expressions, EXPRESSION_SLOTS) && artMapEquals(character?.actions, actions, ACTION_SLOTS)) {
+      return character;
+    }
+    changed = true;
+    return { ...character, expressions, actions };
+  });
+  if (!changed) return library;
+  return { ...library, characters };
+}
+
+export function emptyPerformanceArt() {
+  return {
+    expressions: emptyArtMap(EXPRESSION_SLOTS),
+    actions: emptyArtMap(ACTION_SLOTS),
+  };
+}
+
 export function createCharacter(library, kind) {
   if (!KINDS.has(kind)) throw new Error("人设只能是玩家或台上的角色。");
   const next = clone(library);
@@ -77,6 +135,7 @@ export function createCharacter(library, kind) {
     avatarFile: "",
     fullBodyFile: "",
     thinkingFile: "",
+    ...emptyPerformanceArt(),
     stagePose: freshStagePose(),
   };
   next.characters.push(character);
@@ -91,6 +150,8 @@ export function updateCharacter(library, id, fields) {
   for (const key of ["summary", "personality", "speechStyle", "avatarFile", "fullBodyFile", "thinkingFile"]) {
     if (fields[key] != null) character[key] = String(fields[key]).trim();
   }
+  if (fields.expressions != null) character.expressions = applyArtUpdate(character.expressions, fields.expressions, EXPRESSION_SLOTS);
+  if (fields.actions != null) character.actions = applyArtUpdate(character.actions, fields.actions, ACTION_SLOTS);
   if (fields.stagePose != null) {
     character.stagePose = normalizeStagePose({
       ...normalizeStagePose(character.stagePose),
@@ -132,6 +193,45 @@ function clampPoseNumber(value, limit, fallback) {
 function normalizeThinkingFile(value) {
   if (typeof value !== "string") return "";
   return value.trim();
+}
+
+function emptyArtMap(slots) {
+  const next = {};
+  for (const slot of slots) next[slot.id] = "";
+  return next;
+}
+
+function normalizeArtPath(value) {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+function normalizeArtMap(raw, slots) {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const next = {};
+  for (const slot of slots) next[slot.id] = normalizeArtPath(source[slot.id]);
+  return next;
+}
+
+function applyArtUpdate(current, patch, slots) {
+  const next = normalizeArtMap(current, slots);
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return next;
+  for (const slot of slots) {
+    if (!Object.prototype.hasOwnProperty.call(patch, slot.id)) continue;
+    next[slot.id] = normalizeArtPath(patch[slot.id]);
+  }
+  return next;
+}
+
+function artMapEquals(raw, normalized, slots) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const keys = Object.keys(raw);
+  if (keys.length !== slots.length) return false;
+  for (let index = 0; index < slots.length; index += 1) {
+    if (keys[index] !== slots[index].id) return false;
+    if (raw[keys[index]] !== normalized[slots[index].id]) return false;
+  }
+  return true;
 }
 
 function storedPoseEquals(raw, pose) {

@@ -1,4 +1,5 @@
 node_modules/
+assets/characters/
 data/*.json
 !data/library.seed.json
 data/media/
