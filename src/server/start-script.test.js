@@ -48,6 +48,14 @@ test("官方 MSI 安装脚本不装 Ollama，并且是 ASCII", () => {
   assert.doesNotMatch(text.toLowerCase(), /ollama (pull|install|run)|winget[^\r\n]*ollama/);
 });
 
+test("install-node.bat 按说明检查版本，再用 WinGet 交互安装", () => {
+  const text = readBat("install-node.bat");
+  assert.match(text, /if %MAJOR% GEQ 20 goto enough/);
+  assert.match(text, /call winget install --id OpenJS\.NodeJS\.LTS --exact --source winget --interactive/);
+  assert.doesNotMatch(text, /msiexec/);
+  assert.doesNotMatch(text.toLowerCase(), /ollama (pull|install|run)|winget[^\r\n]*ollama/);
+});
+
 test("Mac 和 Linux 只提示安装 Node，不自动安装", () => {
   const text = fs.readFileSync(path.join(root, "start.sh"), "utf8");
   assert.match(text, /https:\/\/nodejs\.org\//);
