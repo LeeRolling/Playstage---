@@ -82,6 +82,7 @@ test("completeChat 会把台词从兼容接口里取出来", async () => {
     assert.equal(seen.body.model, "qwen-local");
     assert.equal(seen.body.stream, true);
     assert.equal(seen.body.thinking, undefined);
+    assert.equal(seen.body.reasoning_effort, "none");
     assert.equal(seen.body.keep_alive, undefined);
   } finally {
     await new Promise((resolve) => server.close(resolve));
@@ -264,7 +265,9 @@ test("预热的 keep_alive 只出现在本机请求里", async () => {
   );
   assert.equal(bodies[0].keep_alive, -1);
   assert.equal(bodies[0].stream, true);
+  assert.equal(bodies[0].reasoning_effort, "none");
   assert.equal(bodies[1].keep_alive, undefined);
+  assert.equal(bodies[1].reasoning_effort, undefined);
   assert.deepEqual(bodies[1].thinking, { type: "disabled" });
 });
 
@@ -317,6 +320,69 @@ test("预热后一段时间没人用本机，就把模型从显存放开", async
   const dropped = await keeper.onModelSaved(model, { ...model, localKeepWarm: false });
   assert.match(dropped, /卸下/);
   assert.equal(calls.at(-1).keepAlive, 0);
+});
+
+test("本机思考标签不会进台词，旧接口拒绝思考字段时会退回", async () => {
+  const bodies = [];
+  const cleaned = await completeChat(
+    { baseUrl: "http://127.0.0.1:9/v1", model: "huihui-qwen3-14b-q4:latest", apiKey: "" },
+    [{ role: "user", content: "你好" }],
+    async (_url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            choices: [{ message: { content: "<think>先想一下</think>【expr_smile】【pose_wave】这条线今晚还亮着。" } }],
+          }),
+      };
+    },
+  );
+  assert.equal(cleaned.ok, true);
+  assert.equal(cleaned.text.includes("think"), false);
+  assert.equal(cleaned.text.includes("<"), false);
+  assert.match(cleaned.text, /这条线今晚还亮着/);
+  assert.equal(bodies[0].reasoning_effort, "none");
+  assert.equal(bodies[0].thinking, undefined);
+
+  const cloudBodies = [];
+  await completeChat(
+    { baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", apiKey: "qk" },
+    [{ role: "user", content: "你好" }],
+    async (_url, init) => {
+      cloudBodies.push(JSON.parse(init.body));
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ choices: [{ message: { content: "门还开着。" } }] }),
+      };
+    },
+  );
+  assert.equal(cloudBodies[0].reasoning_effort, undefined);
+  assert.equal(cloudBodies[0].thinking, undefined);
+
+  const retried = [];
+  const rejected = await completeChat(
+    { baseUrl: "http://127.0.0.1:9/v1", model: "qwen-local", apiKey: "" },
+    [{ role: "user", content: "你好" }],
+    async (_url, init) => {
+      const body = JSON.parse(init.body);
+      retried.push(body);
+      if (body.reasoning_effort) return { ok: false, status: 400, text: async () => "" };
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ choices: [{ message: { content: "在。" } }] }),
+      };
+    },
+  );
+  assert.equal(rejected.ok, true);
+  assert.equal(rejected.text, "在。");
+  assert.equal(retried.length, 2);
+  assert.equal(retried[0].reasoning_effort, "none");
+  assert.equal(retried[1].reasoning_effort, undefined);
+  assert.equal(retried[1].stream, false);
 });
 
 test("云端地址没带钥匙时不等超时", async () => {
