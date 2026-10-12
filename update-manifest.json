@@ -1,5 +1,5 @@
 {
-  "version": "0.3.8",
+  "version": "0.3.9",
   "repo": "LeeRolling/Playstage---",
   "ref": "main",
   "algorithm": "sha256",
@@ -10,17 +10,18 @@
   "files": {
     ".gitignore": "3f6915fc7583a51170b7eb9fb5a0c06f8efb21a3fce33449fc56dee8f81a6fe5",
     "LICENSE": "5e9cae5f13acc33cc88de4ba2ba43f7d17ec4f4d0e5b65b68fa0da25f47d665e",
-    "README.md": "384667823823ca803ea2b761fea998e31f870ae293d7d9fcc8d3f932ec12679e",
-    "VERSION": "2ff8fdac61e2483801ce3ed0811c1ff6d1982c71959c8bceb32f4d702faf36c5",
+    "README.md": "128ee96f9ee8a681e49087fd14c2f53e8ef80dbc7df3fef649f0b10cc5cc7930",
+    "VERSION": "6fe6f0c68d9a83ebbdb529c1782664c4934fb9f5a63215ab5ad29250d72fe5ed",
     "assets/defaults/README.md": "1b10acdf5c78ae9242259f10f7c06ec4b7f90fdbd4fec8719c8d7f588dd8d796",
-    "check.bat": "ebe63310301998ae974e9a794ac72a3510709c4865c822ee3c954837d738db4e",
+    "check.bat": "828cc3ef6dce6d8911633586ab9180558cfe92e91bcb889870084c3afc5756bf",
     "docs/PRD.md": "23c3c9df8f1b790a273ea70345abb4c03bc80ed9a34a4788e67a8bb93d8abf55",
     "docs/内测更新.md": "639ff3de63c5152a87375f696aac43d54c6dc4d470b7d6eb31dd8525efdd7ffe",
     "docs/动作与表情.md": "c324d1a1669d58664268baa405448037b99d768b8776349e4728117805059214",
     "docs/皮肤制作-给AI.md": "03bec058d440d25fbde8f09a40d91972fb79535f8e5963eb769b49df3331ac7f",
     "docs/自定义皮肤.md": "fd4e2d702decf232bff5aa9804a8a3c5fc9b8612912d92880adbd5fb451c715e",
-    "package.json": "64fa11bdab798872c5fe8ff573a0b476c856bba53da2163b496ddeb1ae3441bb",
+    "package.json": "076bb1bb675376a1d16ffb7b17d189dcceec2b816afbd725adec361baace36ec",
     "scripts/check-boundaries.js": "eaae54279a6e507e03850f16677b6d333cc8e99102444525379b6a49cfa3d45c",
+    "scripts/install-node-lts.ps1": "62840bea13435564ff6637474edf6a7a9b5b0d8327863c221a94e1f6dc09131a",
     "scripts/write-update-manifest.js": "5ed10e493fb5c1a12e1827305594e9c633b6200577664258f542afbd90117b5b",
     "src/domain/acting.js": "92cf429a2f23e2eebecd2cd74b98f053b915ce37726544386b1b4849b616a963",
     "src/domain/characters.js": "d20e071df6ad5fea06199b770fa8fc5aad62b5d3f9240251b9e7e1f19d391b19",
@@ -46,6 +47,7 @@
     "src/server/pictures.test.js": "954f28da839cb364c3c4e0d9e59c73ee668fdbb2f86528850a1697bff9b1c55c",
     "src/server/reply.js": "bc46bec8f03b8fba258ad0461cbdae960884582616ff751bf1838ea312561a04",
     "src/server/reply.test.js": "f7e8e3d1ea17819ed5c1e8be4ae432e0debdc6b3e95877edb86748f1413110d7",
+    "src/server/start-script.test.js": "bc780f65cc444e2efc2715a919e62e4dfdcc17957a7bd70e4b11a654f6c222ed",
     "src/server/store.js": "95be648f7aaf660f745a790642a02b85288ef15b2e5662ef7094b9136611e4e2",
     "src/server/update.js": "ae954b7d2a99f1d5fc2f70090abeb9dba2b43cd460b2783f1370da74fd307d53",
     "src/server/update.test.js": "24fbf396c963046d1a0c9a2a8f060f8416b724957a20959694407a4d7c4e7a8e",
@@ -54,7 +56,7 @@
     "src/ui/crop-mime.test.js": "37ff5383a5afcea8ef49d19d7ab32701df5982ac6fc0515c55736853c92e9d6e",
     "src/ui/index.html": "637d2d2ebf4ad666c1708d237805bdbfead669a0808fe0c1bbcce9a96a3ef639",
     "src/ui/styles.css": "4cf211f5d6769cbd75d328d074437c844b726c13141778bab60d302007d34ca4",
-    "start.bat": "05d85ef0966bc5fe48fb57d4e11a97c9d94e6c08a55de7703d943b1beeb154e4",
-    "start.sh": "6799f4c943bf521042a3ed06aa3d00a33f7d4d83c1b5afb4abb195605952403b"
+    "start.bat": "fab9ff0c67d5095f31d3b5394024acfb3582cddb6acccd288a139a5c6b1f3e10",
+    "start.sh": "0a5ad560fee830da8d9bde5701a68357c58ac16edb536ef6d8a0ff15dcb61cc9"
   }
 }
