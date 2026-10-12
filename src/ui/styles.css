@@ -366,11 +366,11 @@ img.stage-bg.is-pending {
   min-height: min(calc(148px * var(--dialog-scale)), calc(100% - 24px));
   max-height: min(58vh, calc(100% - 24px));
   overflow: hidden;
-  display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  gap: 10px;
-  padding: 10px 14px 8px;
+  container-type: size;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 10px;
   border-radius: var(--radius-dialog);
   background: var(--dialog-bg);
   border: var(--frame) solid var(--dialog-border);
@@ -379,53 +379,67 @@ img.stage-bg.is-pending {
   backdrop-filter: blur(10px);
 }
 
+/* 头像方框跟对话框同一高度，保持 1:1。窄窗口时不超过宽度的 42%，避免把台词挤没。 */
 .dialog-portrait {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 6px;
+  flex: 0 0 auto;
+  align-self: center;
+  width: min(100cqh, 42cqw);
+  height: min(100cqh, 42cqw);
+  position: relative;
+  overflow: hidden;
   min-width: 0;
-  min-height: 0;
+  border-radius: var(--radius-card);
+  border: var(--frame) solid var(--portrait-border);
+  background: rgba(0, 0, 0, 0.35);
 }
 
 .dialog-portrait img,
 .portrait-fallback {
-  width: 72px;
-  height: 72px;
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   object-position: center top;
-  border-radius: var(--radius-card);
-  background: rgba(0, 0, 0, 0.35);
-  border: var(--frame) solid var(--portrait-border);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .portrait-fallback {
   background:
-    radial-gradient(circle at 50% 28px, #f7f1e6 0 16px, transparent 17px),
+    radial-gradient(circle at 50% 28%, #f7f1e6 0 18%, transparent 19%),
     linear-gradient(180deg, var(--accent) 0%, rgba(18, 14, 18, 0.2) 80%);
 }
 
-.dialog-portrait b,
+.dialog-portrait b {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 22px 8px 8px;
+  text-align: center;
+  color: #f7f1e6;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  font-size: clamp(12px, 2.2cqh, 16px);
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .line:not(.system) .line-name {
-  color: var(--name-ink);
+  display: inline-block;
+  color: var(--speaker-ink, var(--name-ink));
   background: var(--name-chip);
   border-radius: var(--name-radius);
   padding: var(--name-pad);
 }
 
-.dialog-portrait b {
-  display: inline-block;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  font-weight: 500;
-}
-
-.line:not(.system) .line-name {
-  display: inline-block;
-}
-
 .dialog-main {
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -452,6 +466,11 @@ img.stage-bg.is-pending {
   margin: 2px 0 0;
   line-height: 1.65;
   font-size: 16px;
+}
+
+.line:not(.system) p {
+  color: var(--speaker-ink, var(--dialog-ink));
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
 }
 
 .line.system .line-name,
@@ -638,6 +657,38 @@ img.stage-bg.is-pending {
   width: 100%;
   margin: 0;
   accent-color: var(--gold);
+}
+
+.color-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.color-line input[type="color"] {
+  width: 44px;
+  height: 36px;
+  padding: 2px;
+  flex: none;
+  border: var(--frame) solid var(--line);
+  border-radius: var(--radius-input);
+  background: var(--input-bg);
+}
+
+.color-line input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, "Cascadia Code", "Sarasa Mono SC", monospace;
+  letter-spacing: 0.04em;
+}
+
+.line-sample {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-input);
+  background: rgba(12, 10, 14, 0.92);
+  color: var(--speaker-ink, #f4efe6);
+  line-height: 1.6;
 }
 
 label {
@@ -1041,10 +1092,9 @@ a { color: var(--gold); }
     height: min(calc(26vh * var(--dialog-scale)), calc(188px * var(--dialog-scale)), calc(100% - 20px));
     min-height: min(calc(148px * var(--dialog-scale)), calc(100% - 20px));
     max-height: min(58vh, calc(100% - 20px));
-    grid-template-columns: 68px minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px;
   }
-  .dialog-portrait img,
-  .portrait-fallback { width: 56px; height: 56px; }
   .stage-scale {
     max-height: calc(100% - 20px);
     overflow: auto;
@@ -1061,6 +1111,16 @@ a { color: var(--gold); }
 .skin-row .mode { text-align: center; }
 
 .skin-note { margin-top: 8px; }
+
+html[data-skin="eastern"] .line:not(.system) .line-name {
+  color: var(--name-ink);
+}
+
+html[data-skin="eastern"] .line:not(.system) p,
+html[data-skin="eastern"] .line-sample {
+  color: color-mix(in srgb, var(--speaker-ink, #1a2332) 38%, #1a2332);
+  text-shadow: none;
+}
 
 html[data-skin="eastern"] .dialog::after,
 html[data-skin="eastern"] .plaque::after,
@@ -1232,12 +1292,17 @@ html[data-skin="eastern"] .modal .callout {
   color: #3f382f;
 }
 
+html[data-skin="eastern"] .line-sample {
+  background: rgba(243, 233, 215, 0.96);
+  border: var(--frame) solid rgba(26, 35, 50, 0.16);
+}
+
 html[data-skin="eastern"] .ledger select,
 html[data-skin="eastern"] .ledger textarea,
-html[data-skin="eastern"] .ledger input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+html[data-skin="eastern"] .ledger input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]),
 html[data-skin="eastern"] .modal select,
 html[data-skin="eastern"] .modal textarea,
-html[data-skin="eastern"] .modal input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+html[data-skin="eastern"] .modal input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]) {
   color: #1a2332;
   -webkit-text-fill-color: #1a2332;
   background-color: rgba(255, 252, 246, 0.92);

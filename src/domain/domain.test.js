@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import { adviseFromVram, describePrerequisites } from "./guide.js";
-import { ACTION_SLOTS, emptyPerformanceArt, EXPRESSION_SLOTS } from "./characters.js";
+import { ACTION_SLOTS, emptyPerformanceArt, EXPRESSION_SLOTS, LINE_COLOR_PALETTE } from "./characters.js";
 import { createSeedLibrary, migrateLibrary } from "./library.js";
 import {
   LOCAL_CONNECTED_NOTE,
@@ -414,6 +414,7 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
         id: "npc-astrid",
         stagePose: { x: 0, y: 0, scale: 1.15 },
         thinkingFile: "",
+        lineColor: "#f0b7a4",
         ...emptyPerformanceArt(),
       },
     ],
@@ -491,6 +492,84 @@ test("思考立绘跟着人设保存，旧档缺了就是空", () => {
   assert.equal(migrated.characters[0].fullBodyFile, "assets/defaults/characters/女/北欧/Astrid.png");
   assert.equal(migrated.characters[1].thinkingFile, "data/media/sigrid-think.png");
   assert.equal(migrated.characters[2].thinkingFile, "");
+});
+
+test("台词颜色记在人设上，旧档没有就按色板补上", () => {
+  const seeded = createSeedLibrary();
+  assert.deepEqual(
+    seeded.characters.map((item) => item.lineColor),
+    LINE_COLOR_PALETTE.slice(0, seeded.characters.length),
+  );
+  assert.equal(new Set(seeded.characters.map((item) => item.lineColor)).size, seeded.characters.length);
+  const migratedSeed = migrateLibrary(seeded);
+  assert.equal(migratedSeed, seeded);
+
+  const made = dispatch(seeded, { type: "character.create", kind: "npc" });
+  const newbie = made.library.characters.at(-1);
+  assert.equal(LINE_COLOR_PALETTE.includes(newbie.lineColor), true);
+  assert.equal(seeded.characters.some((item) => item.lineColor === newbie.lineColor), false);
+  const player = dispatch(made.library, { type: "character.create", kind: "player" }).library.characters.at(-1);
+  assert.equal(LINE_COLOR_PALETTE.includes(player.lineColor), true);
+  assert.notEqual(player.lineColor, newbie.lineColor);
+
+  const saved = dispatch(seeded, {
+    type: "character.update",
+    id: "npc-astrid",
+    fields: { lineColor: " #F0B7A4 " },
+  });
+  assert.equal(saved.library.characters.find((item) => item.id === "npc-astrid").lineColor, "#f0b7a4");
+  const short = dispatch(seeded, {
+    type: "character.update",
+    id: "npc-elin",
+    fields: { lineColor: "abc" },
+  });
+  assert.equal(short.library.characters.find((item) => item.id === "npc-elin").lineColor, "#aabbcc");
+  assert.throws(
+    () => dispatch(seeded, { type: "character.update", id: "npc-elin", fields: { lineColor: "红色" } }),
+    /台词颜色/,
+  );
+  const kept = dispatch(saved.library, {
+    type: "character.update",
+    id: "npc-astrid",
+    fields: { summary: "仍在" },
+  });
+  const keptAstrid = kept.library.characters.find((item) => item.id === "npc-astrid");
+  assert.equal(keptAstrid.summary, "仍在");
+  assert.equal(keptAstrid.lineColor, "#f0b7a4");
+
+  const old = {
+    revision: 2,
+    stagePicked: true,
+    activeStageId: "stage-frost",
+    stages: [{ id: "stage-frost" }],
+    worldBooks: [{ id: "book-frost" }],
+    settings: { spriteScale: "large", dialogScale: "short", uiSkin: "classic", uiSkinMode: "auto" },
+    characters: [
+      { id: "npc-astrid", kind: "npc", name: "Astrid" },
+      { id: "npc-sigrid", name: "Sigrid", lineColor: "#ABCDEF" },
+      { id: "npc-elin", lineColor: "nope" },
+      { id: "player-guest", kind: "player", lineColor: "#abc" },
+      { id: "npc-nuanli", lineColor: "#e6c98a" },
+      { id: "npc-yuetong", lineColor: "#e6c98a" },
+    ],
+  };
+  const migrated = migrateLibrary(old);
+  assert.notEqual(migrated, old);
+  const [astrid, sigrid, elin, guest, nuanli, yuetong] = migrated.characters;
+  assert.equal(LINE_COLOR_PALETTE.includes(astrid.lineColor), true);
+  assert.equal(sigrid.lineColor, "#abcdef");
+  assert.equal(LINE_COLOR_PALETTE.includes(elin.lineColor), true);
+  assert.notEqual(astrid.lineColor, elin.lineColor);
+  assert.notEqual(astrid.lineColor, "#abcdef");
+  assert.notEqual(elin.lineColor, "#abcdef");
+  assert.equal(guest.lineColor, "#aabbcc");
+  assert.equal(nuanli.lineColor, "#e6c98a");
+  assert.equal(yuetong.lineColor, "#e6c98a");
+  assert.equal(migrateLibrary(migrated), migrated);
+
+  const published = toPublicLibrary(saved.library);
+  assert.equal(published.characters.find((item) => item.id === "npc-astrid").lineColor, "#f0b7a4");
+  assert.deepEqual(published.view.lineColorPalette, LINE_COLOR_PALETTE);
 });
 
 test("表情和动作按固定编号记下，旧档缺了就是空", () => {

@@ -190,8 +190,8 @@ function stageHtml(session, scene, sceneUrl, sceneMissing) {
           ${session.messages
             .map(
               (line) => `
-              <article class="line ${esc(line.kind)}">
-                <div class="line-name" style="${skinNameStyle(line)}">${esc(line.speakerName)}</div>
+              <article class="line ${esc(line.kind)}"${lineInkStyle(line)}>
+                <div class="line-name">${esc(line.speakerName)}</div>
                 <p>${esc(line.text)}</p>
               </article>`,
             )
@@ -386,7 +386,7 @@ function cardsHtml() {
   const players = library.characters.filter((item) => item.kind === "player");
   return `
     <h2>人设卡</h2>
-    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像、全身图和思考立绘都可以裁一下再留下。新裁的图会存成 PNG，下面的路径会换成新文件，透明底会留下来。原来的图还在文件夹里，不会被删掉。左右、上下和放大记在这张卡上，每一场都用这一套。角色可以再到【动作与表情】里配十张表情和十一张动作。台上暂时还是用全身图。</p>
+    <p class="help">每位默认角色都写好了全身图的位置。图片放进那个文件夹后，舞台上才会看见。头像、全身图和思考立绘都可以裁一下再留下。新裁的图会存成 PNG，下面的路径会换成新文件，透明底会留下来。原来的图还在文件夹里，不会被删掉。左右、上下和放大记在这张卡上，每一场都用这一套。台词颜色也记在这张卡上，对话框里这个人说的话会用这个颜色。角色可以再到【动作与表情】里配十张表情和十一张动作。台上暂时还是用全身图。</p>
     <div class="row">
       <button class="primary" type="button" data-new="player">新的玩家人设</button>
       <button class="ghost" type="button" data-new="npc">新的角色（记在当前舞台）</button>
@@ -423,9 +423,10 @@ function cardHtml(person) {
       <textarea name="personality">${esc(person.personality)}</textarea>
       <label>说话习惯</label>
       <input name="speechStyle" type="text" value="${esc(person.speechStyle)}" />
+      ${lineColorFieldsHtml(person)}
       <label>头像（可裁成方形）</label>
       <input type="file" accept="image/*" data-crop="avatar" data-person="${esc(person.id)}" />
-      <p class="help">${person.avatarFile ? `已记下 ${esc(person.avatarFile)}` : "还没有单独的头像。对话框会先用全身图。"}</p>
+      <p class="help">${person.avatarFile ? `已记下 ${esc(person.avatarFile)}` : "还没有单独的头像。对话框左边的方块会先用全身图，尽量取到头。"}</p>
       <label>全身图 / 立绘（可裁成立绘）</label>
       <input type="file" accept="image/*" data-crop="full" data-person="${esc(person.id)}" />
       <p class="help">${person.fullBodyFile ? `已记下 ${esc(person.fullBodyFile)}` : "没有全身图时，舞台上用剪影占位。"}</p>
@@ -862,11 +863,50 @@ function currentSkin() {
     : { id: "classic", name: "经典", mode: "auto", chosen: "classic" };
 }
 
-function skinNameStyle(line) {
-  if (line.kind === "system") return "";
-  if (currentSkin().id !== "classic") return "";
-  return `color:${accent(line.speakerId)}`;
+function lineColorFieldsHtml(person) {
+  const color = lineColorOf(person.id);
+  return `
+      <label for="${esc(person.id)}-line-color">台词颜色</label>
+      <div class="color-line">
+        <input type="color" data-line-color value="${esc(color)}" aria-label="挑选台词颜色" />
+        <input id="${esc(person.id)}-line-color" name="lineColor" type="text" maxlength="7" spellcheck="false" autocapitalize="off" value="${esc(color)}" placeholder="#e6c98a" />
+      </div>
+      <p class="line-sample" data-line-sample style="--speaker-ink:${esc(color)}">台上的台词会是这个颜色。</p>
+      <p class="help">写成 # 加六位，例如 #e6c98a。深色对话框请用浅色。东方那套浅色对话框会自动把字压暗，免得糊在纸上。</p>`;
 }
+
+function lineInkStyle(line) {
+  if (line.kind === "system") return "";
+  const color = lineColorOf(line.speakerId);
+  return color ? ` style="--speaker-ink:${esc(color)}"` : "";
+}
+
+function lineColorOf(speakerId) {
+  const person = library.characters.find((item) => item.id === speakerId);
+  const own = normalizeHex(person?.lineColor);
+  if (own) return own;
+  const fromView = Array.isArray(library.view?.lineColorPalette) ? library.view.lineColorPalette : [];
+  const list = [...fromView, ...FALLBACK_LINE_COLORS].map((item) => normalizeHex(item)).filter(Boolean);
+  const palette = list.length ? list : FALLBACK_LINE_COLORS;
+  let total = 0;
+  for (const char of String(speakerId || "line")) total += char.charCodeAt(0);
+  return palette[total % palette.length];
+}
+
+function normalizeHex(value) {
+  const text = String(value || "").trim();
+  const full = /^#?([0-9a-fA-F]{6})$/.exec(text);
+  if (full) return `#${full[1].toLowerCase()}`;
+  const short = /^#?([0-9a-fA-F]{3})$/.exec(text);
+  if (!short) return "";
+  return `#${short[1]
+    .toLowerCase()
+    .split("")
+    .map((item) => item + item)
+    .join("")}`;
+}
+
+const FALLBACK_LINE_COLORS = ["#e6c98a", "#f0b7a4", "#9ec5e8", "#c9d6a8", "#e7c4d8", "#b7e0d2"];
 
 function presetOf(list, id, fallback) {
   return list.find((item) => item.id === id) || list.find((item) => item.id === fallback);
@@ -1341,6 +1381,23 @@ function bind() {
       range.value = number.value;
     });
   });
+  app.querySelectorAll("[data-line-color]").forEach((picker) => {
+    const form = picker.closest("form");
+    const hex = form?.querySelector("[name=lineColor]");
+    const sample = form?.querySelector("[data-line-sample]");
+    if (!hex) return;
+    const paint = (value) => {
+      const next = normalizeHex(value);
+      if (!next) return;
+      picker.value = next;
+      if (sample) sample.style.setProperty("--speaker-ink", next);
+    };
+    picker.addEventListener("input", () => {
+      hex.value = picker.value;
+      paint(picker.value);
+    });
+    hex.addEventListener("input", () => paint(hex.value));
+  });
   app.querySelectorAll("[data-card]").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -1353,6 +1410,7 @@ function bind() {
           summary: data.get("summary"),
           personality: data.get("personality"),
           speechStyle: data.get("speechStyle"),
+          lineColor: data.get("lineColor"),
           stagePose: {
             x: data.get("poseX"),
             y: data.get("poseY"),
