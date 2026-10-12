@@ -44,6 +44,7 @@ let motionCardId = "";
 let motionReturnScroll = 0;
 let ledgerScrollHold = null;
 let localWarm = { pinned: false, message: "", idleMinutes: 10 };
+let appVersion = "";
 let composerDraft = "";
 const previews = new Map();
 const sceneCache = new Map();
@@ -59,6 +60,7 @@ async function boot() {
     hardware = data.hardware;
     prerequisites = data.prerequisites;
     dataFile = data.dataFile || "";
+    appVersion = String(data.version || "");
     guideOpen = !library.guide.completed;
     if (data.update?.message) {
       notice = { tone: data.update.tone === "bad" ? "bad" : "ok", text: data.update.message };
@@ -91,7 +93,7 @@ function render() {
       <header class="topbar">
         <div class="mark">
           <h1>剧戏台</h1>
-          <p>本地演戏</p>
+          <p>本地演戏${appVersion ? ` · ${esc(appVersion)}` : ""}</p>
         </div>
         <div class="pills">
           <span class="pill">${esc(scene.stageName || "未选舞台")}</span>
@@ -732,6 +734,7 @@ function guidePageHtml() {
   const advice = hardware?.advice;
   return `
     <h2>新手引导</h2>
+    <p class="help">当前版本：${esc(appVersion || "未知")}</p>
     <p class="help">给完全没配过模型的人。剧戏台检测显存和本机推理软件，只是为了说明方向，不会替你下载任何模型。</p>
     ${skinHelpHtml()}
     <div class="block">

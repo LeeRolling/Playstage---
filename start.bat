@@ -16,8 +16,9 @@ where node >nul 2>&1
 if errorlevel 1 goto nonode
 
 echo.
+call :print_version
 call :say "5Ymn5oiP5Y+w5q2j5Zyo5pys5py65ZCv5Yqo44CC"
-call :say "6Iul6IO96L+e5LiKIEdpdEh1Yu+8jOS8mueci+eci+acieayoeacieaWsOeJiOacrOOAgui/nuS4jeS4iuaIlui3s+i/h++8jOS5n+S8mueUqOeOsOWcqOi/meS7veaJk+W8gOOAgg=="
+call :say "5YWI55u06L+eIEdpdEh1YiDnnIvmnInmsqHmnInmlrDniYjmnKzjgILov57kuI3kuIrkvJrlho3or5XlhazlvIDplZzlg4/jgILku43kuI3ooYzmiJbpgInmi6not7Pov4fvvIzkuZ/kvJrnlKjnjrDlnKjov5nku73miZPlvIDjgII="
 call :say "6K+355So5rWP6KeI5Zmo5omT5byAIGh0dHA6Ly8xMjcuMC4wLjE6NDE3Mw=="
 call :say "5aaC5p6c5rWP6KeI5Zmo5rKh5pyJ6Ieq5Yqo5by55Ye677yM6K+35oqK5LiK6Z2i55qE5Zyw5Z2A5aSN5Yi26L+b5Y6744CC"
 call :say "5YWz5o6J6L+Z5Liq56qX5Y+j77yM5Ymn5oiP5Y+w5bCx5Lya5YGc5q2i44CC"
@@ -88,6 +89,10 @@ echo https://nodejs.org/
 echo.
 pause
 exit /b 1
+
+:print_version
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $prefix = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('5Ymn5oiP5Y+wIA==')); $version = ''; if (Test-Path -LiteralPath 'VERSION') { $version = [string](Get-Content -LiteralPath 'VERSION' -TotalCount 1) }; $version = $version.Trim(); if (-not $version) { $version = '0.0.0' }; Write-Host ($prefix + $version)"
+exit /b 0
 
 :refresh_path
 if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"

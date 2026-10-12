@@ -25,7 +25,7 @@ import { resolveStoredPicture, retargetLibraryPictures, saveUploadedPicture } fr
 import { readHardware } from "./hardware.js";
 import { replyToPlayer } from "./reply.js";
 import { openStore } from "./store.js";
-import { checkAndApplyUpdate, takeUpdateNote } from "./update.js";
+import { checkAndApplyUpdate, readLocalVersion, takeUpdateNote } from "./update.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const uiDir = path.join(root, "src/ui");
@@ -78,6 +78,7 @@ const server = http.createServer(async (request, response) => {
         prerequisites: describePrerequisites({ ollamaReachable }),
         dataFile: store.file,
         warm: warmKeeper.snapshot(),
+        version: readLocalVersion(root),
         update: updateNotice.message ? { message: updateNotice.message, tone: updateNotice.tone } : null,
       });
     }
@@ -217,6 +218,9 @@ boot().catch((error) => {
 });
 
 async function boot() {
+  const localVersion = readLocalVersion(root);
+  console.log("");
+  console.log(`剧戏台 ${localVersion}`);
   if (process.env.PLAYSTAGE_UPDATE_ATTEMPT !== "1") {
     const result = await checkAndApplyUpdate({ root });
     if (result.action === "restart") {
@@ -243,7 +247,7 @@ async function boot() {
   });
   const page = `http://${host}:${port}`;
   console.log("");
-  console.log("剧戏台已在这台电脑上打开。");
+  console.log(`剧戏台 ${localVersion} 已在这台电脑上打开。`);
   console.log(`请用浏览器访问： ${page}`);
   console.log("关掉这个窗口，剧戏台就会停止。");
   console.log("");

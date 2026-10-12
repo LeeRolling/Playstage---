@@ -1,7 +1,7 @@
 {
   "name": "playstage",
   "private": true,
-  "version": "0.3.10",
+  "version": "0.3.11",
   "description": "剧戏台 — 本地优先的多角色文字演戏",
   "type": "module",
   "engines": {

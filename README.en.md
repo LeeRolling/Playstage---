@@ -377,12 +377,11 @@ When successful, the window displays a Chinese message meaning **Check passed**.
 
 ### Will updates change my saves?
 
-At startup, if GitHub is reachable, the app checks `VERSION` on the public repository's `main` branch. When a new version is found, only program files are replaced. **Your saves, cloud keys, and personal images in `data/` are left alone.**
+At startup, the app checks `VERSION` on the public repository's `main` branch, trying GitHub directly first. If that connection fails, it retries through public GitHub mirrors. Tokens are never sent to those mirrors. When a new version is found, only program files are replaced. **Your saves, cloud keys, and personal images in `data/` are left alone.**
 
 The current version starts normally in any of these cases:
 
-- GitHub cannot be reached.
-- Read access is unavailable.
+- Neither direct GitHub nor the mirrors can be reached.
 - You have placed `data/skip-update.txt` in the project.
 
 Keep your own `data/` folder safe regardless.

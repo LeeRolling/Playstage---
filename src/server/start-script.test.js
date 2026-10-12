@@ -56,6 +56,19 @@ test("install-node.bat 按说明检查版本，再用 WinGet 交互安装", () =
   assert.doesNotMatch(text.toLowerCase(), /ollama (pull|install|run)|winget[^\r\n]*ollama/);
 });
 
+test("启动窗口会写出 VERSION 里的版本", () => {
+  const start = readBat("start.bat");
+  assert.match(start, /:print_version/);
+  assert.match(start, /Test-Path -LiteralPath 'VERSION'/);
+  assert.match(start, /5Ymn5oiP5Y\+wIA==/);
+  const sh = fs.readFileSync(path.join(root, "start.sh"), "utf8");
+  assert.match(sh, /剧戏台 \$\{version\}/);
+  assert.match(sh, /VERSION/);
+  const server = fs.readFileSync(path.join(root, "src/server/index.js"), "utf8");
+  assert.match(server, /console\.log\(`剧戏台 \$\{localVersion\}`\)/);
+  assert.match(server, /剧戏台 \$\{localVersion\} 已在这台电脑上打开/);
+});
+
 test("Mac 和 Linux 只提示安装 Node，不自动安装", () => {
   const text = fs.readFileSync(path.join(root, "start.sh"), "utf8");
   assert.match(text, /https:\/\/nodejs\.org\//);
