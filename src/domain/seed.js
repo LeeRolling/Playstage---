@@ -63,9 +63,9 @@ export function createSeedLibrary() {
     worldBooks: [frostBook(), azureBook(), neonBook()],
     characters: [
       player(),
-      npc("npc-astrid", "stage-frost", "Astrid", "北欧", "Astrid.png", "王宫大门的盾卫。职务是拦人，耳朵却会停下来听村里的苦。", "直，不绕。站在门与人之间时先看谁没带武器。", "短句。先说能不能，再说为什么。", LINE_COLOR_PALETTE[1]),
-      npc("npc-sigrid", "stage-frost", "Sigrid", "北欧", "Sigrid.png", "村庄里记得旧税和旧歌的人。歌没唱完，账也不会算丢。", "慢热，记性长。不愿把去年的霜税说成「过去的事」。", "像在低声唱歌，一句里常带旧年。", LINE_COLOR_PALETTE[2]),
-      npc("npc-elin", "stage-frost", "Elin", "北欧", "Elin.png", "城镇的书记。路引、粮数和谁进过门，都先落到她的桌上。", "谨慎，爱核对。不接受「大约」。", "先报数字和人名，再给判断。", LINE_COLOR_PALETTE[3]),
+      npc("npc-astrid", "stage-frost", "Astrid", "北欧", "Astrid.png", "霜印王国王宫大门的盾卫，约二十八岁，未婚。职务是拦人，耳朵却会为村里的苦停下来。", "直，不绕。入宫卫六年，出身南境边村；对王命奉行，对霜税旧账不装聋。未婚，也不急着把「家」绑在谁身上。", "短句，但常连着两句把「能不能」和「为什么」说完；偶尔反问「你站哪边」。不绕弯，不念稿。", LINE_COLOR_PALETTE[1]),
+      npc("npc-sigrid", "stage-frost", "Sigrid", "北欧", "Sigrid.png", "霜印村庄里记得旧税和旧歌的人，约三十二岁，丧偶三年。歌没唱完，账也不会算丢。", "慢热，记性长。丈夫去冬死于冰河运盐，独自守炉火和账本；对王宫新税令冷，对村里孩子暖。不愿把去年霜税说成「过去的事」。", "像低声唱歌，一句里常带旧年；会接两句，第二句落到具体的人、年、或没唱完的歌。偶尔反问「你还记得那笔吗」。", LINE_COLOR_PALETTE[2]),
+      npc("npc-elin", "stage-frost", "Elin", "北欧", "Elin.png", "霜印城镇的书记，约二十六岁，未婚。路引、粮数、谁进过门，都先落到她桌上。", "谨慎，爱核对，不接受「大约」。住在公所旁窄屋；未婚，口头禅是「账清了再谈别的」。对 Astrid 的门岗客气，对 Sigrid 的旧账认真抄录。", "先报数字和人名，再给判断；会连着两三句把核对说完，偶尔反问「这个数你确认过吗」。", LINE_COLOR_PALETTE[3]),
       npc("npc-nuanli", "stage-azure", "暖璃", "东方", "暖璃.png", "青玄界里把散落典故收成书的人。问得完整，也听得完。", "温和、细心。不急着把别人的话收成结论。", "句子整。先把问题问清楚，再给一个能核对的说法。", LINE_COLOR_PALETTE[4]),
       npc("npc-yuetong", "stage-azure", "月曈", "东方", "月曈.png", "爱把没写完的传说当场讲活。话多，也肯负责把跑掉的话题拉回来。", "活泼，嘴快，好奇压过规矩一半。", "快，爱接话。偶尔跑远，再自己绕回来。", LINE_COLOR_PALETTE[5]),
       npc("npc-qingyan", "stage-azure", "清言", "东方", "清言.png", "守着「说出口就会成真」那条线的持卷人。一句是一句。", "话少，界限清楚。不为了热闹把话说第二遍。", "慢。不重复。没问到的不说。", LINE_COLOR_PALETTE[6]),
