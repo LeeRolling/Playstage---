@@ -1169,3 +1169,47 @@ test("种子文件与开局数据一致", () => {
   const disk = JSON.parse(fs.readFileSync(new URL("../../data/library.seed.json", import.meta.url), "utf8"));
   assert.deepEqual(disk, createSeedLibrary());
 });
+
+test("没改过的霜印人设会换成新种子，改过的卡留着", () => {
+  const seeded = createSeedLibrary();
+  assert.equal(migrateLibrary(seeded), seeded);
+  const astrid = seeded.characters.find((item) => item.id === "npc-astrid");
+  assert.match(astrid.summary, /约二十八岁/);
+  assert.match(astrid.speechStyle, /你站哪边/);
+
+  const old = createSeedLibrary();
+  const previous = {
+    "npc-astrid": {
+      summary: "王宫大门的盾卫。职务是拦人，耳朵却会停下来听村里的苦。",
+      personality: "直，不绕。站在门与人之间时先看谁没带武器。",
+      speechStyle: "短句。先说能不能，再说为什么。",
+    },
+    "npc-sigrid": {
+      summary: "村庄里记得旧税和旧歌的人。歌没唱完，账也不会算丢。",
+      personality: "慢热，记性长。不愿把去年的霜税说成「过去的事」。",
+      speechStyle: "像在低声唱歌，一句里常带旧年。",
+    },
+    "npc-elin": {
+      summary: "城镇的书记。路引、粮数和谁进过门，都先落到她的桌上。",
+      personality: "谨慎，爱核对。不接受「大约」。",
+      speechStyle: "先报数字和人名，再给判断。",
+    },
+  };
+  old.characters = old.characters.map((item) => (previous[item.id] ? { ...item, ...previous[item.id] } : item));
+  old.characters.find((item) => item.id === "npc-elin").summary = "我改过的书记";
+  const migrated = migrateLibrary(old);
+  const nextAstrid = migrated.characters.find((item) => item.id === "npc-astrid");
+  const nextSigrid = migrated.characters.find((item) => item.id === "npc-sigrid");
+  const nextElin = migrated.characters.find((item) => item.id === "npc-elin");
+  assert.equal(nextAstrid.id, "npc-astrid");
+  assert.equal(nextAstrid.summary, astrid.summary);
+  assert.equal(nextAstrid.personality, astrid.personality);
+  assert.equal(nextAstrid.speechStyle, astrid.speechStyle);
+  assert.equal(nextAstrid.fullBodyFile, astrid.fullBodyFile);
+  assert.match(nextSigrid.summary, /丧偶三年/);
+  assert.match(nextSigrid.personality, /冰河运盐/);
+  assert.match(nextSigrid.speechStyle, /你还记得那笔吗/);
+  assert.equal(nextElin.summary, "我改过的书记");
+  assert.equal(nextElin.personality, previous["npc-elin"].personality);
+  assert.equal(nextElin.speechStyle, previous["npc-elin"].speechStyle);
+});
