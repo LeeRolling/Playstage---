@@ -24,6 +24,19 @@ test("版本号只在远端更大时才要更新", () => {
   assert.equal(isRemoteNewer("0.3.1", "0.3.0"), false);
 });
 
+test("角色自己的表情和动作不进更新清单", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "playstage-list-"));
+  fs.mkdirSync(path.join(root, "assets", "characters", "暖璃", "表情"), { recursive: true });
+  fs.mkdirSync(path.join(root, "assets", "defaults"), { recursive: true });
+  fs.writeFileSync(path.join(root, "assets", "characters", "暖璃", "表情", "expr_smile.png"), "mine");
+  fs.writeFileSync(path.join(root, "assets", "defaults", "keep.txt"), "ship");
+  fs.writeFileSync(path.join(root, "VERSION"), "0.3.6\n");
+  const listed = listUpdateFiles(root);
+  assert.equal(listed.includes("assets/characters/暖璃/表情/expr_smile.png"), false);
+  assert.equal(listed.includes("assets/defaults/keep.txt"), true);
+  assert.equal(listed.includes("VERSION"), true);
+});
+
 test("更新不能碰到存档、钥匙或跑出目录", () => {
   assert.equal(safeUpdatePath("src/server/update.js"), "src/server/update.js");
   assert.equal(safeUpdatePath("data/library.json"), "");

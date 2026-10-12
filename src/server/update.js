@@ -314,6 +314,8 @@ function walkFiles(abs, rel, found) {
     const stat = fs.statSync(childAbs);
     if (stat.isDirectory()) {
       if (BLOCKED_ROOTS.has(name)) continue;
+      // 角色自己裁的表情和动作不进更新清单，更新时也不会被换掉。
+      if (childRel === "assets/characters") continue;
       walkFiles(childAbs, childRel, found);
     } else if (stat.isFile()) found.push(childRel);
   }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import { adviseFromVram, describePrerequisites } from "./guide.js";
+import { ACTION_SLOTS, emptyPerformanceArt, EXPRESSION_SLOTS } from "./characters.js";
 import { createSeedLibrary, migrateLibrary } from "./library.js";
 import {
   LOCAL_CONNECTED_NOTE,
@@ -408,7 +409,14 @@ test("每人设记住台上的位置和放大，缺了就居中并略放大", ()
     stages: [{ id: "stage-frost" }],
     worldBooks: [{ id: "book-frost" }],
     settings: { spriteScale: "large", dialogScale: "short", uiSkin: "classic", uiSkinMode: "auto" },
-    characters: [{ id: "npc-astrid", stagePose: { x: 0, y: 0, scale: 1.15 }, thinkingFile: "" }],
+    characters: [
+      {
+        id: "npc-astrid",
+        stagePose: { x: 0, y: 0, scale: 1.15 },
+        thinkingFile: "",
+        ...emptyPerformanceArt(),
+      },
+    ],
   };
   assert.equal(migrateLibrary(stable), stable);
 
@@ -483,6 +491,124 @@ test("思考立绘跟着人设保存，旧档缺了就是空", () => {
   assert.equal(migrated.characters[0].fullBodyFile, "assets/defaults/characters/女/北欧/Astrid.png");
   assert.equal(migrated.characters[1].thinkingFile, "data/media/sigrid-think.png");
   assert.equal(migrated.characters[2].thinkingFile, "");
+});
+
+test("表情和动作按固定编号记下，旧档缺了就是空", () => {
+  const expressionIds = EXPRESSION_SLOTS.map((slot) => slot.id);
+  const actionIds = ACTION_SLOTS.map((slot) => slot.id);
+  assert.deepEqual(expressionIds, [
+    "expr_neutral",
+    "expr_smile",
+    "expr_laugh",
+    "expr_sad",
+    "expr_angry",
+    "expr_shy",
+    "expr_surprised",
+    "expr_think",
+    "expr_pain",
+    "expr_love",
+  ]);
+  assert.deepEqual(actionIds, [
+    "pose_stand",
+    "pose_sit",
+    "pose_walk",
+    "pose_run",
+    "pose_wave",
+    "pose_point",
+    "pose_cross_arms",
+    "pose_cover_face",
+    "pose_kneel",
+    "pose_lie",
+    "pose_fight",
+  ]);
+
+  const seeded = createSeedLibrary();
+  for (const person of seeded.characters) {
+    assert.deepEqual(Object.keys(person.expressions), expressionIds);
+    assert.deepEqual(Object.values(person.expressions), expressionIds.map(() => ""));
+    assert.deepEqual(Object.keys(person.actions), actionIds);
+    assert.deepEqual(Object.values(person.actions), actionIds.map(() => ""));
+  }
+
+  const made = dispatch(seeded, { type: "character.create", kind: "npc" }).library.characters.at(-1);
+  assert.deepEqual(Object.keys(made.expressions), expressionIds);
+  assert.deepEqual(Object.values(made.actions), actionIds.map(() => ""));
+  const player = dispatch(seeded, { type: "character.create", kind: "player" }).library.characters.at(-1);
+  assert.deepEqual(Object.keys(player.expressions), expressionIds);
+
+  const saved = dispatch(seeded, {
+    type: "character.update",
+    id: "npc-nuanli",
+    fields: {
+      expressions: {
+        expr_smile: " assets/characters/暖璃/表情/expr_smile.png ",
+        expr_nope: "不要这个键",
+        expr_sad: 4,
+      },
+    },
+  });
+  const nuanli = saved.library.characters.find((item) => item.id === "npc-nuanli");
+  assert.equal(nuanli.expressions.expr_smile, "assets/characters/暖璃/表情/expr_smile.png");
+  assert.equal(nuanli.expressions.expr_sad, "");
+  assert.equal(nuanli.expressions.expr_neutral, "");
+  assert.equal("expr_nope" in nuanli.expressions, false);
+  assert.equal(nuanli.fullBodyFile, "assets/defaults/characters/女/东方/暖璃.png");
+  assert.deepEqual(nuanli.actions, emptyPerformanceArt().actions);
+
+  const added = dispatch(saved.library, {
+    type: "character.update",
+    id: "npc-nuanli",
+    fields: { actions: { pose_wave: " assets/characters/暖璃/动作/pose_wave.png " }, summary: "仍在" },
+  });
+  const kept = added.library.characters.find((item) => item.id === "npc-nuanli");
+  assert.equal(kept.summary, "仍在");
+  assert.equal(kept.expressions.expr_smile, "assets/characters/暖璃/表情/expr_smile.png");
+  assert.equal(kept.actions.pose_wave, "assets/characters/暖璃/动作/pose_wave.png");
+  assert.equal(kept.actions.pose_stand, "");
+  assert.equal(added.library.characters.find((item) => item.id === "npc-yuetong").expressions.expr_smile, "");
+
+  const published = toPublicLibrary(added.library);
+  assert.deepEqual(
+    published.view.performance.expressions.map((slot) => slot.id),
+    expressionIds,
+  );
+  assert.deepEqual(
+    published.view.performance.actions.map((slot) => slot.id),
+    actionIds,
+  );
+  assert.equal(published.view.performance.expressions[0].label, "中立");
+  assert.equal(published.view.performance.actions[0].label, "站");
+  const exported = dispatch(added.library, { type: "transfer.export", kind: "characters" });
+  assert.equal(
+    exported.download.body.characters.find((item) => item.id === "npc-nuanli").expressions.expr_smile,
+    "assets/characters/暖璃/表情/expr_smile.png",
+  );
+
+  const old = {
+    revision: 2,
+    stagePicked: true,
+    activeStageId: "stage-azure",
+    stages: [{ id: "stage-azure" }],
+    worldBooks: [{ id: "book-azure" }],
+    settings: { spriteScale: "large", dialogScale: "short", uiSkin: "classic", uiSkinMode: "auto" },
+    characters: [
+      {
+        id: "npc-nuanli",
+        name: "暖璃",
+        fullBodyFile: "assets/defaults/characters/女/东方/暖璃.png",
+        expressions: { expr_smile: " assets/characters/暖璃/表情/expr_smile.jpg ", extra: "丢掉" },
+      },
+      { id: "npc-yuetong", actions: "不是表" },
+    ],
+  };
+  const migrated = migrateLibrary(old);
+  assert.equal(migrated.characters[0].fullBodyFile, "assets/defaults/characters/女/东方/暖璃.png");
+  assert.equal(migrated.characters[0].expressions.expr_smile, "assets/characters/暖璃/表情/expr_smile.jpg");
+  assert.equal(migrated.characters[0].expressions.expr_love, "");
+  assert.equal("extra" in migrated.characters[0].expressions, false);
+  assert.deepEqual(migrated.characters[0].actions, emptyPerformanceArt().actions);
+  assert.deepEqual(migrated.characters[1].expressions, emptyPerformanceArt().expressions);
+  assert.deepEqual(migrated.characters[1].actions, emptyPerformanceArt().actions);
 });
 
 test("剧情包占位导出含前文提要，导入只登记", () => {
