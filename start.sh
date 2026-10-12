@@ -3,8 +3,11 @@ cd "$(dirname "$0")"
 if ! command -v node >/dev/null 2>&1; then
   echo ""
   echo "还没有检测到 Node.js。"
-  echo "这一步需要你自己完成：请先安装 Node.js（建议 20 或更新），装好后再运行 bash start.sh。"
+  echo "请先安装 Node.js（建议 20 或更新），装好后再运行 bash start.sh。"
   echo "下载页面： https://nodejs.org/"
+  if command -v brew >/dev/null 2>&1; then
+    echo "如果要用 Homebrew，请自己运行： brew install node"
+  fi
   echo ""
   exit 1
 fi
