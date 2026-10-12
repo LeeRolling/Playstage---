@@ -9,6 +9,7 @@ import {
   createCharacter,
   DEFAULT_STAGE_POSE,
   EXPRESSION_SLOTS,
+  LINE_COLOR_PALETTE,
   removeCharacter,
   STAGE_POSE_LIMITS,
   updateCharacter,
@@ -125,6 +126,7 @@ export function toPublicLibrary(library) {
       expressions: EXPRESSION_SLOTS.map((slot) => ({ id: slot.id, label: slot.label })),
       actions: ACTION_SLOTS.map((slot) => ({ id: slot.id, label: slot.label })),
     },
+    lineColorPalette: [...LINE_COLOR_PALETTE],
   };
   return next;
 }

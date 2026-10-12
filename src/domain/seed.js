@@ -3,7 +3,15 @@
  * 夜晚图与白天同一文件夹，文件名里的「_白天」换成「_晚上」。
  */
 
-import { DEFAULT_STAGE_POSE, emptyPerformanceArt, ensureCharacterArt, ensureCharacterPoses, ensureThinkingFiles } from "./characters.js";
+import {
+  DEFAULT_STAGE_POSE,
+  emptyPerformanceArt,
+  ensureCharacterArt,
+  ensureCharacterPoses,
+  ensureLineColors,
+  ensureThinkingFiles,
+  LINE_COLOR_PALETTE,
+} from "./characters.js";
 import { defaultCloudSlots, ensureModelSlots } from "./models.js";
 import { ensureCurrentLocation } from "./scene.js";
 import { DEFAULT_SETTINGS, ensureSettings } from "./settings.js";
@@ -55,15 +63,15 @@ export function createSeedLibrary() {
     worldBooks: [frostBook(), azureBook(), neonBook()],
     characters: [
       player(),
-      npc("npc-astrid", "stage-frost", "Astrid", "北欧", "Astrid.png", "王宫大门的盾卫。职务是拦人，耳朵却会停下来听村里的苦。", "直，不绕。站在门与人之间时先看谁没带武器。", "短句。先说能不能，再说为什么。"),
-      npc("npc-sigrid", "stage-frost", "Sigrid", "北欧", "Sigrid.png", "村庄里记得旧税和旧歌的人。歌没唱完，账也不会算丢。", "慢热，记性长。不愿把去年的霜税说成「过去的事」。", "像在低声唱歌，一句里常带旧年。"),
-      npc("npc-elin", "stage-frost", "Elin", "北欧", "Elin.png", "城镇的书记。路引、粮数和谁进过门，都先落到她的桌上。", "谨慎，爱核对。不接受「大约」。", "先报数字和人名，再给判断。"),
-      npc("npc-nuanli", "stage-azure", "暖璃", "东方", "暖璃.png", "青玄界里把散落典故收成书的人。问得完整，也听得完。", "温和、细心。不急着把别人的话收成结论。", "句子整。先把问题问清楚，再给一个能核对的说法。"),
-      npc("npc-yuetong", "stage-azure", "月曈", "东方", "月曈.png", "爱把没写完的传说当场讲活。话多，也肯负责把跑掉的话题拉回来。", "活泼，嘴快，好奇压过规矩一半。", "快，爱接话。偶尔跑远，再自己绕回来。"),
-      npc("npc-qingyan", "stage-azure", "清言", "东方", "清言.png", "守着「说出口就会成真」那条线的持卷人。一句是一句。", "话少，界限清楚。不为了热闹把话说第二遍。", "慢。不重复。没问到的不说。"),
-      npc("npc-chutang", "stage-neon", "初棠", "现代", "初棠.png", "霓穹市边缘长大的向导。废区的后门和城市中心哪扇门只对预约开，她都认得。", "热，但不硬闯。先告诉你哪条路今晚走得过。", "口语。爱提街道、后门和「这条线今晚还亮着」。"),
-      npc("npc-xingxuan", "stage-neon", "星璇", "现代", "星璇.png", "把霓穹市看成一幅还没完成的作品。嘴上要走，交到手里的活仍会做完。", "傲，嘴硬。不轻易认输，也不把半成品给人看。", "可以很长，但收在她自己的标准上。催促只会让她更慢。"),
-      npc("npc-xuejing", "stage-neon", "雪璟", "现代", "雪璟.png", "城里最快的画师之一。原件不轻易交给别人，语气却常常是轻的。", "表面温婉，距离感清楚。笑的时候也不等于答应。", "轻，慢。一句里留一点没说完的笑。"),
+      npc("npc-astrid", "stage-frost", "Astrid", "北欧", "Astrid.png", "王宫大门的盾卫。职务是拦人，耳朵却会停下来听村里的苦。", "直，不绕。站在门与人之间时先看谁没带武器。", "短句。先说能不能，再说为什么。", LINE_COLOR_PALETTE[1]),
+      npc("npc-sigrid", "stage-frost", "Sigrid", "北欧", "Sigrid.png", "村庄里记得旧税和旧歌的人。歌没唱完，账也不会算丢。", "慢热，记性长。不愿把去年的霜税说成「过去的事」。", "像在低声唱歌，一句里常带旧年。", LINE_COLOR_PALETTE[2]),
+      npc("npc-elin", "stage-frost", "Elin", "北欧", "Elin.png", "城镇的书记。路引、粮数和谁进过门，都先落到她的桌上。", "谨慎，爱核对。不接受「大约」。", "先报数字和人名，再给判断。", LINE_COLOR_PALETTE[3]),
+      npc("npc-nuanli", "stage-azure", "暖璃", "东方", "暖璃.png", "青玄界里把散落典故收成书的人。问得完整，也听得完。", "温和、细心。不急着把别人的话收成结论。", "句子整。先把问题问清楚，再给一个能核对的说法。", LINE_COLOR_PALETTE[4]),
+      npc("npc-yuetong", "stage-azure", "月曈", "东方", "月曈.png", "爱把没写完的传说当场讲活。话多，也肯负责把跑掉的话题拉回来。", "活泼，嘴快，好奇压过规矩一半。", "快，爱接话。偶尔跑远，再自己绕回来。", LINE_COLOR_PALETTE[5]),
+      npc("npc-qingyan", "stage-azure", "清言", "东方", "清言.png", "守着「说出口就会成真」那条线的持卷人。一句是一句。", "话少，界限清楚。不为了热闹把话说第二遍。", "慢。不重复。没问到的不说。", LINE_COLOR_PALETTE[6]),
+      npc("npc-chutang", "stage-neon", "初棠", "现代", "初棠.png", "霓穹市边缘长大的向导。废区的后门和城市中心哪扇门只对预约开，她都认得。", "热，但不硬闯。先告诉你哪条路今晚走得过。", "口语。爱提街道、后门和「这条线今晚还亮着」。", LINE_COLOR_PALETTE[7]),
+      npc("npc-xingxuan", "stage-neon", "星璇", "现代", "星璇.png", "把霓穹市看成一幅还没完成的作品。嘴上要走，交到手里的活仍会做完。", "傲，嘴硬。不轻易认输，也不把半成品给人看。", "可以很长，但收在她自己的标准上。催促只会让她更慢。", LINE_COLOR_PALETTE[8]),
+      npc("npc-xuejing", "stage-neon", "雪璟", "现代", "雪璟.png", "城里最快的画师之一。原件不轻易交给别人，语气却常常是轻的。", "表面温婉，距离感清楚。笑的时候也不等于答应。", "轻，慢。一句里留一点没说完的笑。", LINE_COLOR_PALETTE[9]),
     ],
     sessions: [
       {
@@ -120,7 +128,9 @@ export function createSeedLibrary() {
 export function migrateLibrary(raw) {
   if (raw && raw.revision >= 2 && Array.isArray(raw.worldBooks) && Array.isArray(raw.stages)) {
     return ensureLibraryModel(
-      ensureCurrentLocation(ensureCharacterArt(ensureCharacterPoses(ensureThinkingFiles(ensureSettings(raw))))),
+      ensureCurrentLocation(
+        ensureCharacterArt(ensureCharacterPoses(ensureThinkingFiles(ensureLineColors(ensureSettings(raw))))),
+      ),
     );
   }
   const seed = createSeedLibrary();
@@ -181,6 +191,7 @@ function player() {
     summary: "走进哪一座舞台，就先以旅人的身份开口。",
     personality: "好奇，说话直接。",
     speechStyle: "短句。",
+    lineColor: LINE_COLOR_PALETTE[0],
     avatarFile: "",
     fullBodyFile: "",
     thinkingFile: "",
@@ -189,7 +200,7 @@ function player() {
   };
 }
 
-function npc(id, stageId, name, folder, fileName, summary, personality, speechStyle) {
+function npc(id, stageId, name, folder, fileName, summary, personality, speechStyle, lineColor) {
   return {
     id,
     kind: "npc",
@@ -198,6 +209,7 @@ function npc(id, stageId, name, folder, fileName, summary, personality, speechSt
     summary,
     personality,
     speechStyle,
+    lineColor,
     avatarFile: "",
     fullBodyFile: `assets/defaults/characters/女/${folder}/${fileName}`,
     thinkingFile: "",

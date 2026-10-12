@@ -22,6 +22,26 @@ export const STAGE_POSE_LIMITS = {
 };
 
 /**
+ * 台词颜色记在人设上。对话框里这个人说的话用这一色，方便分清是谁。
+ * 缺了、或写得不像颜色时，按这个色板补一个还没被占用的浅色。
+ * 这些浅色在经典、赛博、北欧的深色对话框上读得清。东方那套浅底由界面再压暗。
+ */
+export const LINE_COLOR_PALETTE = [
+  "#e6c98a",
+  "#f0b7a4",
+  "#9ec5e8",
+  "#c9d6a8",
+  "#e7c4d8",
+  "#b7e0d2",
+  "#d7c4f2",
+  "#f3d6a1",
+  "#8fd0c8",
+  "#e8b4c8",
+  "#d2c2a6",
+  "#c5b4e3",
+];
+
+/**
  * 表情和动作用固定编号当键，不用中文情绪词。
  * 界面上可以写短中文，存下来的路径和文件名仍用这些编号。
  * TODO: 模型台词自动切换表情/动作，以及世界书同义词词典，留到后面的测试版。
@@ -96,6 +116,48 @@ export function ensureThinkingFiles(library) {
 }
 
 /**
+ * 旧档没有台词颜色时补上。已经写成颜色的留着，只把大小写和三位缩写收成 #rrggbb。
+ * 两位角色可以故意用同一色，这里不拆开。
+ */
+export function ensureLineColors(library) {
+  if (!Array.isArray(library?.characters) || library.characters.length === 0) return library;
+  const reserved = new Set();
+  for (const character of library.characters) {
+    const color = normalizeLineColor(character?.lineColor);
+    if (color) reserved.add(color);
+  }
+  let changed = false;
+  const characters = library.characters.map((character, index) => {
+    const color = normalizeLineColor(character?.lineColor);
+    if (color) {
+      if (character.lineColor === color) return character;
+      changed = true;
+      return { ...character, lineColor: color };
+    }
+    const assigned = unusedPaletteColor(reserved, index);
+    reserved.add(assigned);
+    changed = true;
+    return { ...character, lineColor: assigned };
+  });
+  if (!changed) return library;
+  return { ...library, characters };
+}
+
+export function normalizeLineColor(value) {
+  if (typeof value !== "string") return "";
+  const text = value.trim();
+  const full = /^#?([0-9a-fA-F]{6})$/.exec(text);
+  if (full) return `#${full[1].toLowerCase()}`;
+  const short = /^#?([0-9a-fA-F]{3})$/.exec(text);
+  if (!short) return "";
+  return `#${short[1]
+    .toLowerCase()
+    .split("")
+    .map((item) => item + item)
+    .join("")}`;
+}
+
+/**
  * 旧档没有表情、动作两张表时补成空的。编号以外的键丢掉。已写好的路径留着。
  */
 export function ensureCharacterArt(library) {
@@ -132,6 +194,7 @@ export function createCharacter(library, kind) {
     summary: "",
     personality: "",
     speechStyle: "",
+    lineColor: nextLineColor(next),
     avatarFile: "",
     fullBodyFile: "",
     thinkingFile: "",
@@ -149,6 +212,11 @@ export function updateCharacter(library, id, fields) {
   if (fields.name != null) character.name = requireText(fields.name, "人设要有名字。");
   for (const key of ["summary", "personality", "speechStyle", "avatarFile", "fullBodyFile", "thinkingFile"]) {
     if (fields[key] != null) character[key] = String(fields[key]).trim();
+  }
+  if (fields.lineColor != null) {
+    const color = normalizeLineColor(String(fields.lineColor));
+    if (!color) throw new Error("台词颜色要写成 # 开头的颜色，例如 #e6c98a。");
+    character.lineColor = color;
   }
   if (fields.expressions != null) character.expressions = applyArtUpdate(character.expressions, fields.expressions, EXPRESSION_SLOTS);
   if (fields.actions != null) character.actions = applyArtUpdate(character.actions, fields.actions, ACTION_SLOTS);
@@ -232,6 +300,21 @@ function artMapEquals(raw, normalized, slots) {
     if (raw[keys[index]] !== normalized[slots[index].id]) return false;
   }
   return true;
+}
+
+function nextLineColor(library) {
+  const used = new Set((library?.characters || []).map((item) => normalizeLineColor(item?.lineColor)).filter(Boolean));
+  return unusedPaletteColor(used, library?.characters?.length || 0);
+}
+
+function unusedPaletteColor(used, startIndex) {
+  const size = LINE_COLOR_PALETTE.length;
+  const start = ((startIndex % size) + size) % size;
+  for (let step = 0; step < size; step += 1) {
+    const color = LINE_COLOR_PALETTE[(start + step) % size];
+    if (!used.has(color)) return color;
+  }
+  return LINE_COLOR_PALETTE[start];
 }
 
 function storedPoseEquals(raw, pose) {
