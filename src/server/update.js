@@ -1,5 +1,5 @@
 /**
- * 内测更新：对照私有仓库 main 上的 VERSION。
+ * 启动更新：对照仓库 main 上的 VERSION。
  * 只替换清单里的程序文件。data/（存档、钥匙、令牌）和清单以外的图片不动。
  * 清单本身用 GitHub 返回的内容指纹核对，每个文件再用 SHA-256 核对。对不上就不替换。
  */
@@ -12,7 +12,7 @@ import path from "node:path";
 export const UPDATE_REPO = "LeeRolling/Playstage---";
 export const UPDATE_REF = "main";
 
-const ROOT_FILES = ["package.json", "VERSION", "start.bat", "start.sh", "check.bat", "README.md", ".gitignore"];
+const ROOT_FILES = ["package.json", "VERSION", "start.bat", "start.sh", "check.bat", "README.md", "LICENSE", ".gitignore"];
 const ROOT_DIRS = ["src", "scripts", "docs", "assets"];
 const BLOCKED_ROOTS = new Set(["data", "node_modules", ".git", ".update-staging"]);
 
@@ -102,7 +102,7 @@ export async function checkAndApplyUpdate({ root, env = process.env, fetchImpl =
       action: "offline",
       tone: "bad",
       localVersion,
-      message: "没有找到 GitHub 读取权限。内测需要私有仓库的只读令牌，或先在这台电脑登录 gh。这次先用现有的剧戏台打开。",
+      message: "没有找到 GitHub 读取权限（公开仓库一般不需要令牌；网络受限时可登录 gh 或放只读令牌）。这次先用现有的剧戏台打开。",
     };
   }
   try {
@@ -215,10 +215,10 @@ function rejected(localVersion, message) {
 function offlineMessage(error) {
   const status = Number(error?.status || 0);
   if (status === 401 || status === 403) {
-    return "令牌不能读取这个私有仓库。请确认你已被邀请为协作者，并且令牌有读取权限。这次先用现有的剧戏台打开。";
+    return "令牌不能读取这个仓库。请确认令牌仍有效，或去掉令牌直接用公开访问。这次先用现有的剧戏台打开。";
   }
   if (status === 404) {
-    return "没有在私有仓库里找到可更新的版本，或当前令牌读不到它。这次先用现有的剧戏台打开。";
+    return "没有在仓库里找到可更新的版本，或当前访问读不到它。这次先用现有的剧戏台打开。";
   }
   if (error?.message === "fingerprint") {
     return "更新清单的指纹对不上，没有替换。这次仍用现有的剧戏台打开。";
