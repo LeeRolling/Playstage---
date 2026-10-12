@@ -4,10 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  UPDATE_MIRROR_PREFIXES,
   applyUpdateFiles,
   checkAndApplyUpdate,
   compareVersions,
   gitBlobSha,
+  githubMirrorFileUrl,
   isRemoteNewer,
   listUpdateFiles,
   readLocalVersion,
@@ -158,24 +160,41 @@ test("清单对不上或没有网时不替换，并说明可以继续用现有�
   assert.equal(fs.readFileSync(path.join(root, "data", "library.json"), "utf8"), '{"cloudApiKey":"secret-key"}\n');
 });
 
-test("没有令牌或选择跳过时不下载，直接用现有的", async () => {
+test("没有令牌时仍直连公开仓库；连不上再按顺序试镜像", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "playstage-update-"));
   fs.mkdirSync(path.join(root, "data"), { recursive: true });
   fs.writeFileSync(path.join(root, "VERSION"), "0.3.0\n");
-  let called = 0;
+  const calls = [];
   const missing = await checkAndApplyUpdate({
     root,
     env: {},
     runGh: () => "",
-    fetchImpl: async () => {
-      called += 1;
-      throw new Error("should not fetch");
+    fetchImpl: async (url, options = {}) => {
+      calls.push(url);
+      assert.equal(options.headers?.authorization, undefined);
+      throw new Error("offline");
     },
   });
-  assert.equal(called, 0);
-  assert.match(missing.message, /令牌/);
+  assert.equal(missing.action, "offline");
+  assert.match(missing.message, /镜像都试过了/);
+  assert.match(missing.message, /现有的剧戏台/);
+  assert.equal(calls[0].includes("api.github.com"), true);
+  UPDATE_MIRROR_PREFIXES.forEach((prefix, index) => {
+    assert.equal(calls[index + 1].startsWith(prefix), true, prefix);
+  });
+  assert.equal(calls.length, 1 + UPDATE_MIRROR_PREFIXES.length);
+
+  const versionBytes = Buffer.from("0.3.0\n");
+  const current = await checkAndApplyUpdate({
+    root,
+    env: {},
+    runGh: () => "",
+    fetchImpl: fakeGithub({ VERSION: versionBytes }),
+  });
+  assert.equal(current.action, "current");
 
   fs.writeFileSync(path.join(root, "data", "skip-update.txt"), "");
+  let called = 0;
   const skipped = await checkAndApplyUpdate({
     root,
     env: { PLAYSTAGE_GITHUB_TOKEN: "token-1" },
@@ -188,6 +207,116 @@ test("没有令牌或选择跳过时不下载，直接用现有的", async () =>
   assert.equal(called, 0);
   assert.equal(skipped.action, "skip");
   assert.match(skipped.message, /跳过/);
+});
+
+test("直连失败后用镜像下载，令牌不经过镜像，清单仍要核对", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "playstage-update-"));
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.mkdirSync(path.join(root, "data"), { recursive: true });
+  fs.writeFileSync(path.join(root, "VERSION"), "0.3.0\n");
+  fs.writeFileSync(path.join(root, "src", "app.js"), "old");
+  fs.writeFileSync(path.join(root, "data", "library.json"), "keep-save");
+
+  const versionBytes = Buffer.from("0.3.1\n");
+  const appBytes = Buffer.from("new-app");
+  const manifest = {
+    version: "0.3.1",
+    files: {
+      VERSION: sha256(versionBytes),
+      "src/app.js": sha256(appBytes),
+    },
+  };
+  const files = {
+    VERSION: versionBytes,
+    "update-manifest.json": Buffer.from(`${JSON.stringify(manifest)}\n`),
+    "src/app.js": appBytes,
+  };
+  const token = "super-secret-token";
+  const transport = fakeMirrorTransport(files, { token, failPrefixes: [UPDATE_MIRROR_PREFIXES[0]] });
+  const updated = await checkAndApplyUpdate({
+    root,
+    env: { PLAYSTAGE_GITHUB_TOKEN: token },
+    runGh: () => "",
+    fetchImpl: transport.fetchImpl,
+  });
+  assert.equal(updated.action, "restart");
+  assert.equal(fs.readFileSync(path.join(root, "src", "app.js"), "utf8"), "new-app");
+  assert.equal(fs.readFileSync(path.join(root, "data", "library.json"), "utf8"), "keep-save");
+  assert.equal(transport.calls[0].url.includes("api.github.com"), true);
+  assert.equal(transport.calls.filter((call) => call.url.includes("api.github.com")).length, 1);
+  assert.equal(transport.calls[0].authorization, `Bearer ${token}`);
+  assert.equal(transport.calls[1].url, githubMirrorFileUrl(UPDATE_MIRROR_PREFIXES[0], "LeeRolling/Playstage---", "VERSION", "main"));
+  assert.equal(transport.calls[2].url.startsWith(UPDATE_MIRROR_PREFIXES[1]), true);
+  assert.equal(transport.calls.some((call) => call.url.startsWith(UPDATE_MIRROR_PREFIXES[2])), false);
+  for (const call of transport.calls) {
+    if (!call.url.includes("api.github.com")) {
+      assert.equal(call.authorization, "");
+      assert.equal(call.url.includes(token), false);
+    }
+  }
+  assert.equal(
+    transport.calls.filter((call) => call.url.startsWith(UPDATE_MIRROR_PREFIXES[0])).length,
+    1,
+  );
+
+  fs.writeFileSync(path.join(root, "VERSION"), "0.3.0\n");
+  fs.writeFileSync(path.join(root, "src", "app.js"), "old");
+  const tampered = fakeMirrorTransport(
+    { ...files, "src/app.js": Buffer.from("tampered") },
+    { direct: "throw" },
+  );
+  const rejected = await checkAndApplyUpdate({
+    root,
+    env: {},
+    runGh: () => "",
+    fetchImpl: tampered.fetchImpl,
+  });
+  assert.equal(rejected.action, "rejected");
+  assert.match(rejected.message, /对不上/);
+  assert.equal(fs.readFileSync(path.join(root, "src", "app.js"), "utf8"), "old");
+});
+
+test("令牌被拒绝时改为公开直连，不通才用镜像", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "playstage-update-"));
+  fs.writeFileSync(path.join(root, "VERSION"), "0.3.0\n");
+  const calls = [];
+  const result = await checkAndApplyUpdate({
+    root,
+    env: { PLAYSTAGE_GITHUB_TOKEN: "expired-token" },
+    runGh: () => "",
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, authorization: options.headers?.authorization || "" });
+      if (url.includes("api.github.com") && options.headers?.authorization) {
+        return { ok: false, status: 401, json: async () => ({}) };
+      }
+      if (url.includes("api.github.com")) return githubContents(url, { VERSION: Buffer.from("0.3.0\n") });
+      throw new Error("mirror should not run");
+    },
+  });
+  assert.equal(result.action, "current");
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].authorization, /Bearer expired-token/);
+  assert.equal(calls[1].authorization, "");
+  assert.equal(calls[1].url.includes("api.github.com"), true);
+});
+
+test("仓库里没有这个文件时不改走镜像", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "playstage-update-"));
+  fs.writeFileSync(path.join(root, "VERSION"), "0.3.0\n");
+  const calls = [];
+  const missing = await checkAndApplyUpdate({
+    root,
+    env: {},
+    runGh: () => "",
+    fetchImpl: async (url) => {
+      calls.push(url);
+      return { ok: false, status: 404, json: async () => ({}) };
+    },
+  });
+  assert.equal(missing.action, "offline");
+  assert.match(missing.message, /没有在仓库里找到/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].includes("api.github.com"), true);
 });
 
 test("内容指纹用 git blob", () => {
@@ -203,22 +332,58 @@ test("替换时拒绝写进 data", () => {
   assert.equal(fs.readFileSync(path.join(root, "data", "library.json"), "utf8"), "keep");
 });
 
-function fakeGithub(files) {
-  return async (url) => {
-    const parsed = new URL(url);
-    const marker = "/contents/";
-    const start = parsed.pathname.indexOf(marker);
-    const filePath = decodeURIComponent(parsed.pathname.slice(start + marker.length));
+function fakeMirrorTransport(files, { token = "", direct = "throw", failPrefixes = [] } = {}) {
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    const authorization = String(options.headers?.authorization || "");
+    calls.push({ url, authorization });
+    if (!url.includes("api.github.com") && (authorization || (token && url.includes(token)))) {
+      throw new Error("token leaked");
+    }
+    if (url.includes("api.github.com")) {
+      if (direct === "throw") throw new Error("network");
+      return githubContents(url, files);
+    }
+    const prefix = UPDATE_MIRROR_PREFIXES.find((item) => url.startsWith(item));
+    if (!prefix) return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) };
+    if (failPrefixes.includes(prefix)) throw new Error("mirror down");
+    const marker = "/raw/";
+    const after = url.slice(url.indexOf(marker) + marker.length);
+    const filePath = after
+      .slice(after.indexOf("/") + 1)
+      .split("/")
+      .map((part) => decodeURIComponent(part))
+      .join("/");
     const bytes = files[filePath];
-    if (!bytes) return { ok: false, status: 404, json: async () => ({}) };
+    if (!bytes) return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) };
     return {
       ok: true,
       status: 200,
-      json: async () => ({
-        encoding: "base64",
-        content: Buffer.from(bytes).toString("base64"),
-        sha: gitBlobSha(bytes),
-      }),
+      headers: { get: () => "application/octet-stream" },
+      arrayBuffer: async () => Uint8Array.from(bytes).buffer,
     };
   };
+  return { fetchImpl, calls };
+}
+
+function githubContents(url, files) {
+  const parsed = new URL(url);
+  const marker = "/contents/";
+  const start = parsed.pathname.indexOf(marker);
+  const filePath = decodeURIComponent(parsed.pathname.slice(start + marker.length));
+  const bytes = files[filePath];
+  if (!bytes) return { ok: false, status: 404, json: async () => ({}) };
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      encoding: "base64",
+      content: Buffer.from(bytes).toString("base64"),
+      sha: gitBlobSha(bytes),
+    }),
+  };
+}
+
+function fakeGithub(files) {
+  return async (url) => githubContents(url, files);
 }

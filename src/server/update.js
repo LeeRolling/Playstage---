@@ -1,7 +1,8 @@
 /**
  * 启动更新：对照仓库 main 上的 VERSION。
  * 只替换清单里的程序文件。data/（存档、钥匙、令牌）和清单以外的图片不动。
- * 清单本身用 GitHub 返回的内容指纹核对，每个文件再用 SHA-256 核对。对不上就不替换。
+ * 先直连 GitHub。连不上再试公开镜像，镜像不附带令牌。
+ * 直连时清单用 GitHub 返回的内容指纹核对。每条路径都再用 SHA-256 核对。对不上就不替换。
  */
 
 import { createHash } from "node:crypto";
@@ -11,6 +12,9 @@ import path from "node:path";
 
 export const UPDATE_REPO = "LeeRolling/Playstage---";
 export const UPDATE_REF = "main";
+
+/** 直连失败后才用，顺序不要倒过来。只拼公开的 github.com 地址，绝不附带令牌。 */
+export const UPDATE_MIRROR_PREFIXES = ["https://gh-proxy.com/", "https://ghfast.top/", "https://gh.llkk.cc/"];
 
 const ROOT_FILES = ["package.json", "VERSION", "start.bat", "start.sh", "check.bat", "install-node.bat", "README.md", "README.en.md", "LICENSE", ".gitignore"];
 const ROOT_DIRS = ["src", "scripts", "docs", "assets"];
@@ -97,33 +101,22 @@ export async function checkAndApplyUpdate({ root, env = process.env, fetchImpl =
     };
   }
   const token = readGithubToken(root, env, runGh);
-  if (!token) {
-    return {
-      action: "offline",
-      tone: "bad",
-      localVersion,
-      message: "没有找到 GitHub 读取权限（公开仓库一般不需要令牌；网络受限时可登录 gh 或放只读令牌）。这次先用现有的剧戏台打开。",
-    };
-  }
+  const source = {
+    repo: UPDATE_REPO,
+    ref: UPDATE_REF,
+    token,
+    fetchImpl,
+    channel: "direct",
+    mirrorPrefix: "",
+    usedMirror: false,
+  };
   try {
-    const remoteVersionBytes = await githubFile({
-      repo: UPDATE_REPO,
-      filePath: "VERSION",
-      ref: UPDATE_REF,
-      token,
-      fetchImpl,
-    });
+    const remoteVersionBytes = await readUpdateFile(source, "VERSION");
     const remoteVersion = remoteVersionBytes.toString("utf8").trim();
     if (!isRemoteNewer(localVersion, remoteVersion)) {
       return { action: "current", tone: "ok", localVersion, remoteVersion, message: "" };
     }
-    const manifestBytes = await githubFile({
-      repo: UPDATE_REPO,
-      filePath: "update-manifest.json",
-      ref: UPDATE_REF,
-      token,
-      fetchImpl,
-    });
+    const manifestBytes = await readUpdateFile(source, "update-manifest.json");
     const manifest = parseManifest(manifestBytes);
     if (manifest.version !== remoteVersion) {
       return rejected(localVersion, "清单上的版本和 VERSION 对不上，没有替换。这次仍用现有的剧戏台打开。");
@@ -137,7 +130,7 @@ export async function checkAndApplyUpdate({ root, env = process.env, fetchImpl =
       if (!rel || !/^[a-f0-9]{64}$/.test(String(hash))) {
         return rejected(localVersion, "清单里有不能替换的路径，没有更新。这次仍用现有的剧戏台打开。");
       }
-      const bytes = await githubFile({ repo: UPDATE_REPO, filePath: rel, ref: UPDATE_REF, token, fetchImpl });
+      const bytes = await readUpdateFile(source, rel);
       if (sha256(bytes) !== hash) {
         return rejected(localVersion, "新版本有文件和清单对不上，没有替换。这次仍用现有的剧戏台打开。");
       }
@@ -165,7 +158,7 @@ export async function checkAndApplyUpdate({ root, env = process.env, fetchImpl =
       action: "offline",
       tone: "bad",
       localVersion,
-      message: offlineMessage(error),
+      message: offlineMessage(error, source),
     };
   }
 }
@@ -212,7 +205,7 @@ function rejected(localVersion, message) {
   return { action: "rejected", tone: "bad", localVersion, message };
 }
 
-function offlineMessage(error) {
+function offlineMessage(error, source) {
   const status = Number(error?.status || 0);
   if (status === 401 || status === 403) {
     return "令牌不能读取这个仓库。请确认令牌仍有效，或去掉令牌直接用公开访问。这次先用现有的剧戏台打开。";
@@ -225,6 +218,9 @@ function offlineMessage(error) {
   }
   if (error?.message === "manifest") {
     return "更新清单读不懂，没有替换。这次仍用现有的剧戏台打开。";
+  }
+  if (source?.usedMirror) {
+    return "这次没连上更新（直连 GitHub 和镜像都试过了）。将用这台电脑上现有的剧戏台打开。存档还在。";
   }
   return "这次没连上更新。将用这台电脑上现有的剧戏台打开。存档还在。";
 }
@@ -240,6 +236,122 @@ function parseManifest(bytes) {
     throw Object.assign(new Error("manifest"), { status: 0 });
   }
   return manifest;
+}
+
+export function githubPublicFileUrl(repo, filePath, ref) {
+  const encodedPath = String(filePath || "")
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  return `https://github.com/${repo}/raw/${encodeURIComponent(ref)}/${encodedPath}`;
+}
+
+export function githubMirrorFileUrl(prefix, repo, filePath, ref) {
+  const base = String(prefix || "").replace(/\/?$/, "/");
+  return `${base}${githubPublicFileUrl(repo, filePath, ref)}`;
+}
+
+async function readUpdateFile(source, filePath) {
+  if (source.channel === "direct") {
+    try {
+      return await readDirectFile(source, filePath);
+    } catch (error) {
+      if (!canFallBackToMirror(error)) throw error;
+      source.channel = "mirror";
+    }
+  }
+  source.usedMirror = true;
+  return readMirrorFile(source, filePath);
+}
+
+async function readDirectFile(source, filePath) {
+  try {
+    return await githubFile({
+      repo: source.repo,
+      filePath,
+      ref: source.ref,
+      token: source.token,
+      fetchImpl: source.fetchImpl,
+    });
+  } catch (error) {
+    if (!source.token || !isAuthStatus(error)) throw error;
+    const bytes = await githubFile({
+      repo: source.repo,
+      filePath,
+      ref: source.ref,
+      token: "",
+      fetchImpl: source.fetchImpl,
+    });
+    source.token = "";
+    return bytes;
+  }
+}
+
+async function readMirrorFile(source, filePath) {
+  const prefixes = source.mirrorPrefix
+    ? [source.mirrorPrefix, ...UPDATE_MIRROR_PREFIXES.filter((item) => item !== source.mirrorPrefix)]
+    : [...UPDATE_MIRROR_PREFIXES];
+  let lastError = Object.assign(new Error("offline"), { status: 0 });
+  for (const prefix of prefixes) {
+    try {
+      const bytes = await fetchMirrorFile({
+        prefix,
+        repo: source.repo,
+        filePath,
+        ref: source.ref,
+        fetchImpl: source.fetchImpl,
+        token: source.token,
+      });
+      source.mirrorPrefix = prefix;
+      return bytes;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+function canFallBackToMirror(error) {
+  if (!error || error.message === "fingerprint" || error.message === "manifest") return false;
+  const status = Number(error.status || 0);
+  if (status === 404) return false;
+  if (!status || status === 408 || status === 429 || isAuthStatus(error) || status >= 500) return true;
+  return false;
+}
+
+function isAuthStatus(error) {
+  const status = Number(error?.status || 0);
+  return status === 401 || status === 403;
+}
+
+async function fetchMirrorFile({ prefix, repo, filePath, ref, fetchImpl, token }) {
+  const normalized = String(prefix || "").replace(/\/?$/, "/");
+  if (!UPDATE_MIRROR_PREFIXES.includes(normalized)) throw Object.assign(new Error("mirror"), { status: 0 });
+  const url = githubMirrorFileUrl(normalized, repo, filePath, ref);
+  if (token && url.includes(token)) throw Object.assign(new Error("mirror"), { status: 0 });
+  const response = await fetchImpl(url, {
+    headers: {
+      accept: "application/octet-stream",
+      "user-agent": "playstage-updater",
+    },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!response.ok) {
+    const error = new Error(`mirror ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  const type = String(response.headers?.get?.("content-type") || "");
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (!bytes.length || type.includes("text/html") || looksLikeHtml(bytes)) {
+    throw Object.assign(new Error("mirror html"), { status: 502 });
+  }
+  return bytes;
+}
+
+function looksLikeHtml(bytes) {
+  const head = bytes.subarray(0, 64).toString("utf8").trim().toLowerCase();
+  return head.startsWith("<!doctype") || head.startsWith("<html");
 }
 
 async function githubFile({ repo, filePath, ref, token, fetchImpl }) {
@@ -287,12 +399,14 @@ async function githubFile({ repo, filePath, ref, token, fetchImpl }) {
 }
 
 function githubHeaders(token) {
-  return {
+  const headers = {
     accept: "application/vnd.github+json",
-    authorization: `Bearer ${token}`,
     "user-agent": "playstage-updater",
     "x-github-api-version": "2022-11-28",
   };
+  const value = String(token || "").trim();
+  if (value) headers.authorization = `Bearer ${value}`;
+  return headers;
 }
 
 function defaultGhToken() {

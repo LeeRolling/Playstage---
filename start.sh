@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 cd "$(dirname "$0")"
+version="0.0.0"
+if [[ -f VERSION ]]; then
+  version="$(tr -d '\r' < VERSION | head -n 1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  [[ -n "$version" ]] || version="0.0.0"
+fi
+echo ""
+echo "剧戏台 ${version}"
 if ! command -v node >/dev/null 2>&1; then
   echo ""
   echo "还没有检测到 Node.js。"
@@ -11,9 +18,8 @@ if ! command -v node >/dev/null 2>&1; then
   echo ""
   exit 1
 fi
-echo ""
 echo "剧戏台正在本机启动。"
-echo "若能连上 GitHub，会看看私有仓库有没有新版本。连不上或跳过，也会用现在这份打开。"
+echo "先直连 GitHub 看有没有新版本。连不上会再试公开镜像。仍不行或选择跳过，也会用现在这份打开。"
 echo "请用浏览器打开： http://127.0.0.1:4173"
 echo "关掉这个窗口，剧戏台就会停止。"
 echo ""
