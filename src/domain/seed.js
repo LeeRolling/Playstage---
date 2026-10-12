@@ -127,9 +127,11 @@ export function createSeedLibrary() {
 
 export function migrateLibrary(raw) {
   if (raw && raw.revision >= 2 && Array.isArray(raw.worldBooks) && Array.isArray(raw.stages)) {
-    return ensureLibraryModel(
-      ensureCurrentLocation(
-        ensureCharacterArt(ensureCharacterPoses(ensureThinkingFiles(ensureLineColors(ensureSettings(raw))))),
+    return refreshUntouchedFrostCards(
+      ensureLibraryModel(
+        ensureCurrentLocation(
+          ensureCharacterArt(ensureCharacterPoses(ensureThinkingFiles(ensureLineColors(ensureSettings(raw))))),
+        ),
       ),
     );
   }
@@ -155,6 +157,50 @@ export function migrateLibrary(raw) {
     }
   }
   return seed;
+}
+
+const PREVIOUS_FROST_CARDS = {
+  "npc-astrid": {
+    summary: "王宫大门的盾卫。职务是拦人，耳朵却会停下来听村里的苦。",
+    personality: "直，不绕。站在门与人之间时先看谁没带武器。",
+    speechStyle: "短句。先说能不能，再说为什么。",
+  },
+  "npc-sigrid": {
+    summary: "村庄里记得旧税和旧歌的人。歌没唱完，账也不会算丢。",
+    personality: "慢热，记性长。不愿把去年的霜税说成「过去的事」。",
+    speechStyle: "像在低声唱歌，一句里常带旧年。",
+  },
+  "npc-elin": {
+    summary: "城镇的书记。路引、粮数和谁进过门，都先落到她的桌上。",
+    personality: "谨慎，爱核对。不接受「大约」。",
+    speechStyle: "先报数字和人名，再给判断。",
+  },
+};
+
+function refreshUntouchedFrostCards(library) {
+  if (!Array.isArray(library?.characters)) return library;
+  const seedById = new Map(
+    createSeedLibrary()
+      .characters.filter((item) => PREVIOUS_FROST_CARDS[item.id])
+      .map((item) => [item.id, item]),
+  );
+  let changed = false;
+  const characters = library.characters.map((character) => {
+    const previous = PREVIOUS_FROST_CARDS[character?.id];
+    const nextCard = seedById.get(character?.id);
+    if (!previous || !nextCard) return character;
+    const untouched = ["summary", "personality", "speechStyle"].every((key) => character[key] === previous[key]);
+    if (!untouched) return character;
+    changed = true;
+    return {
+      ...character,
+      summary: nextCard.summary,
+      personality: nextCard.personality,
+      speechStyle: nextCard.speechStyle,
+    };
+  });
+  if (!changed) return library;
+  return { ...library, characters };
 }
 
 function ensureLibraryModel(library) {
