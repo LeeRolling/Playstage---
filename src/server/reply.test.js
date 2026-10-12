@@ -142,6 +142,32 @@ test("抢话会接两句然后冷静", async () => {
   assert.equal(JSON.stringify(toPublicLibrary(outcome.library)).includes("zk"), false);
 });
 
+test("台上不留下思考标签和句式样例", async () => {
+  let library = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-neon" }).library;
+  library = dispatch(library, { type: "model.update", provider: "local", localModel: "huihui-qwen3-14b-q4:latest" }).library;
+  const spoken = await replyToPlayer(library, "你们好啊", async () => ({
+    ok: true,
+    text: "句式样例： 初棠：...... </think> 【expr_smile】【pose_wave】初棠：这条线今晚还亮着，你来得刚好。",
+  }));
+  const npc = spoken.library.sessions[0].messages.filter((item) => item.kind === "npc");
+  assert.equal(npc.length, 1);
+  assert.equal(npc[0].speakerName, "初棠");
+  assert.equal(npc[0].text, "这条线今晚还亮着，你来得刚好。");
+  assert.equal(npc[0].expression, "expr_smile");
+  assert.equal(npc[0].action, "pose_wave");
+  assert.equal(npc[0].text.includes("句式样例"), false);
+  assert.equal(npc[0].text.includes("think"), false);
+
+  const residue = await replyToPlayer(spoken.library, "再问一句", async () => ({
+    ok: true,
+    text: "</think>颗。",
+  }));
+  assert.equal(residue.tone, "bad");
+  assert.match(residue.message, /没有说出内容/);
+  assert.equal(residue.library.sessions[0].messages.filter((item) => item.kind === "npc").length, 1);
+  assert.equal(residue.library.sessions[0].messages.some((item) => item.text.includes("颗")), false);
+});
+
 test("生成时只标出正在接话的那一位，说完或失败都清掉", async () => {
   let library = dispatch(createSeedLibrary(), { type: "stage.select", stageId: "stage-frost" }).library;
   library = dispatch(library, { type: "session.setMode", mode: "interrupt" }).library;

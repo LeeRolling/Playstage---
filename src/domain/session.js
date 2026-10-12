@@ -1,3 +1,4 @@
+import { prepareSpokenReply } from "./reply-text.js";
 import { applyStoryCues, bookForSession } from "./scene.js";
 import { assertCastBelongs } from "./stages.js";
 import { clone, nowIso, requireText, uid } from "./util.js";
@@ -127,9 +128,9 @@ export function commitNpcReply(library, speakerId, text) {
   const session = getSession(next);
   const npc = next.characters.find((item) => item.id === speakerId && item.kind === "npc");
   if (!npc) throw new Error("台上没有这个角色。");
-  const line = cleanSpokenLine(requireText(text, "模型没有说出内容。"), npc.name);
-  if (!line) throw new Error("模型没有说出内容。");
-  session.messages.push(message(npc.id, npc.name, "npc", line));
+  const spoken = prepareSpokenReply(requireText(text, "模型没有说出内容。"), npc.name);
+  if (!spoken.line) throw new Error("模型没有说出内容。");
+  session.messages.push(message(npc.id, npc.name, "npc", spoken.line, spoken));
   if (session.speakMode === "turn") {
     const alive = aliveNpcs(next, session);
     const index = alive.findIndex((item) => item.id === npc.id);
@@ -157,22 +158,8 @@ export function appendSystemLine(library, text) {
   return next;
 }
 
-function cleanSpokenLine(text, name) {
-  let value = String(text || "").trim();
-  value = value.replace(/^```[\w]*\n?/, "").replace(/```$/, "").trim();
-  const paragraph = value.split(/\n{2,}/).map((item) => item.trim()).find(Boolean) || value;
-  value = paragraph.replace(new RegExp(`^${escapeReg(name)}\\s*[：:]\\s*`), "");
-  value = value.replace(/^[「"]/, "").replace(/[」"]$/, "").trim();
-  if (value.length > 600) value = `${value.slice(0, 600)}…`;
-  return value;
-}
-
-function escapeReg(text) {
-  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function message(speakerId, speakerName, kind, text) {
-  return {
+function message(speakerId, speakerName, kind, text, cue = null) {
+  const row = {
     id: uid("msg"),
     speakerId,
     speakerName,
@@ -180,4 +167,7 @@ function message(speakerId, speakerName, kind, text) {
     text,
     at: nowIso(),
   };
+  if (cue?.expression) row.expression = cue.expression;
+  if (cue?.action) row.action = cue.action;
+  return row;
 }

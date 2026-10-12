@@ -11,6 +11,7 @@ import {
   resolveRouteMode,
   shouldReleaseLocalWarm,
 } from "../domain/models.js";
+import { sanitizeModelReply } from "../domain/reply-text.js";
 
 const LOCAL_COLD_TIMEOUT_MS = 240_000;
 const LOCAL_WARM_TIMEOUT_MS = 120_000;
@@ -161,18 +162,21 @@ export async function completeChat(target, messages, fetchImpl = fetch, options 
   const now = options.now || Date.now;
   const started = now();
   const deepseek = looksLikeDeepSeek(target);
+  const local = !target?.apiKey;
   let thinkingRejected = false;
   let result = await requestChat(url, target, messages, fetchImpl, {
     ...options,
     stream: true,
     disableThinking: deepseek,
+    reasoningEffort: local ? "none" : "",
   });
   if (!result.ok && result.status === 400) {
-    if (deepseek) thinkingRejected = true;
+    if (deepseek || local) thinkingRejected = true;
     result = await requestChat(url, target, messages, fetchImpl, {
       ...options,
       stream: false,
       disableThinking: false,
+      reasoningEffort: "",
     });
   }
   const elapsed = now() - started;
@@ -181,6 +185,7 @@ export async function completeChat(target, messages, fetchImpl = fetch, options 
       ...options,
       stream: false,
       disableThinking: deepseek && !thinkingRejected,
+      reasoningEffort: local && !thinkingRejected ? "none" : "",
       maxTokens: options.maxTokens || 400,
     });
     if (!result.ok && result.kind === "empty") {
@@ -235,6 +240,7 @@ function chatBody(target, messages, options) {
     stream: options.stream !== false,
   };
   if (options.disableThinking) body.thinking = { type: "disabled" };
+  if (options.reasoningEffort) body.reasoning_effort = options.reasoningEffort;
   if (options.keepAlive != null && !target?.apiKey) body.keep_alive = options.keepAlive;
   return body;
 }
@@ -305,11 +311,11 @@ function parseEventStream(raw) {
       // 跳过一行读不懂的片段，后面可能还有台词。
     }
   }
-  return { text: content.trim() };
+  return { text: sanitizeModelReply(content).trim() };
 }
 
 function extractReply(payload) {
-  return extractPiece(payload).trim();
+  return sanitizeModelReply(extractPiece(payload)).trim();
 }
 
 export function ollamaGenerateUrl(baseUrl) {

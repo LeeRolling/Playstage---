@@ -6,6 +6,7 @@
  * TODO: 还没有按「话题是否已经收束」做语义判断（例如决定吃什么就停）。见产品说明里的对话链条。
  */
 
+import { ACTION_SLOTS, EXPRESSION_SLOTS } from "./characters.js";
 import { bookForSession, resolveScene } from "./scene.js";
 import { aliveNpcs, getSession } from "./session.js";
 
@@ -46,8 +47,9 @@ export function buildActingMessages(library, speakerId, context = {}) {
   const others = aliveNpcs(library, session).filter((npc) => npc.id !== speaker.id);
   const player = library.characters.find((item) => item.id === session.playerCardId);
   const system = [
-    `你在剧戏台里扮演「${speaker.name}」。只输出这一句台词。`,
-    "用中文，用这个人自己的口气。不要写名字前缀，不要写旁白，不要代替别人说话，不要解释你在扮演。",
+    `你在剧戏台里扮演「${speaker.name}」。`,
+    replyFormatBlock(),
+    "用中文，用这个人自己的口气。不要写旁白，不要代替别人说话，不要解释你在扮演。",
     "",
     worldBlock(book, scene, session),
     "",
@@ -65,7 +67,7 @@ export function buildActingMessages(library, speakerId, context = {}) {
   ].join("\n");
   return [
     { role: "system", content: system },
-    { role: "user", content: `请只写「${speaker.name}」接下来要说的一句台词。` },
+    { role: "user", content: `接下来只输出「${speaker.name}」的一句。同一行：先【表情编号】再【动作编号】，然后直接写台词。不要写别的。` },
   ];
 }
 
@@ -112,6 +114,17 @@ function characterBlock(speaker) {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function replyFormatBlock() {
+  return [
+    "这一句只写成同一行，顺序固定：先一个表情编号，再一个动作编号，最后才是台词。",
+    `表情编号放进【】，只能从这些里选一个：${EXPRESSION_SLOTS.map((slot) => slot.id).join(" ")}。`,
+    `动作编号放进【】，只能从这些里选一个：${ACTION_SLOTS.map((slot) => slot.id).join(" ")}。`,
+    "编号后面紧接着台词。不要换行，不要写名字。",
+    "不要输出思考过程，不要输出思考标签。",
+    "不要写句式样例，不要复述上面的格式说明，不要写旁白或任何说明。",
+  ].join("\n");
 }
 
 function modeBlock(mode, index, total, name) {

@@ -760,6 +760,16 @@ test("提示词带上世界书和刚说的话，钥匙不进界面", () => {
   assert.match(messages[0].content, /霜税还没结/);
   assert.match(messages[0].content, /Astrid/);
   assert.match(messages[0].content, /严格轮流/);
+  assert.match(messages[0].content, /expr_neutral/);
+  assert.match(messages[0].content, /expr_love/);
+  assert.match(messages[0].content, /pose_stand/);
+  assert.match(messages[0].content, /pose_fight/);
+  assert.match(messages[0].content, /不要写句式样例/);
+  assert.match(messages[0].content, /思考标签/);
+  assert.equal(/句式样例\s*[：:]/.test(messages[0].content), false);
+  assert.equal(messages[1].content.includes("句式样例"), false);
+  assert.match(messages[1].content, /【表情编号】/);
+  assert.match(messages[1].content, /【动作编号】/);
   library = dispatch(library, {
     type: "model.update",
     provider: "qwen",
