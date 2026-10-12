@@ -508,6 +508,12 @@ img.stage-bg.is-pending {
   color: var(--danger);
 }
 
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
+}
+
 .side {
   min-height: 0;
   border-left: var(--frame) solid var(--line);

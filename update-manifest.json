@@ -51,7 +51,7 @@
     "src/ui/crop-mime.js": "1b0e9978ab9ec4dab3fe08b66198f381e813c13adf46a0f4df3f7611d695a505",
     "src/ui/crop-mime.test.js": "37ff5383a5afcea8ef49d19d7ab32701df5982ac6fc0515c55736853c92e9d6e",
     "src/ui/index.html": "637d2d2ebf4ad666c1708d237805bdbfead669a0808fe0c1bbcce9a96a3ef639",
-    "src/ui/styles.css": "38e2123ba21bdf23c7f95167750acca9b6da10792e49e5bffc59bac3fc9e78b7",
+    "src/ui/styles.css": "506ab32639d83735e8f561e0dcc27c289cb3474e718ff04c05cc47b864a5f2b9",
     "start.bat": "05d85ef0966bc5fe48fb57d4e11a97c9d94e6c08a55de7703d943b1beeb154e4",
     "start.sh": "6799f4c943bf521042a3ed06aa3d00a33f7d4d83c1b5afb4abb195605952403b"
   }
